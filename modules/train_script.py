@@ -38,8 +38,8 @@ if __name__ == "__main__":
     setup(rank, world_size)
 
 
-    df1 = sample_cells('data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
-    df2 = sample_cells('data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
+    df1 = sample_cells('sc_alz/data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
+    df2 = sample_cells('sc_alz/data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
 
     df = build_dataset(df1, df2)
 
