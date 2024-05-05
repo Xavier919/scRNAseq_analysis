@@ -50,7 +50,7 @@ class PairedDataset(Dataset):
 
         for i, sample1 in enumerate(zipped_list):
             available_indices = list(range(len(zipped_list)))
-            available_indices.remove(i)  # Remove current index to avoid self-pairing
+            available_indices.remove(i) 
 
             for _ in range(self.pairs_per_sample):
                 if available_indices:
@@ -59,9 +59,9 @@ class PairedDataset(Dataset):
 
                     pairs.append((sample1[0], sample2[0]))
                     labels.append(int(sample1[1] == sample2[1]))
-                    available_indices.remove(idx)  # Optional: remove to avoid re-picking
+                    available_indices.remove(idx)  
 
-        return pairs, torch.tensor(labels, dtype=torch.long)  # Using torch.long for classification labels
+        return pairs, torch.tensor(labels, dtype=torch.long)  
 
     def __len__(self):
         return len(self.labels)
