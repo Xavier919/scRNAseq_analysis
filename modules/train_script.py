@@ -88,7 +88,7 @@ if __name__ == "__main__":
         if dist.get_rank() == 0:
             print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
 
-        if rank == 0 and val_accuracy > best_accuracy:
+        if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
             torch.save(siamese_model.module.state_dict(), f'best_model_{args.split}.pth')
             torch.save(siamese_model.module.base_network.state_dict(), f'base_net_model_{args.split}.pth')
