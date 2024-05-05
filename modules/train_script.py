@@ -46,9 +46,6 @@ if __name__ == "__main__":
     X = df.drop('label', axis=1).values
     Y = df['label'].values
 
-    #X = X.to_numpy()
-    #Y = Y.to_numpy()
-
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
