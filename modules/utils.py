@@ -18,7 +18,7 @@ test_writer = SummaryWriter()
 def sample_cells(path, label, num_samples=-1, random_state=42):
     sampled_data = anndata.read_h5ad(path)
     if num_samples > 0 and sampled_data.n_obs > num_samples:
-        sampled_indices = np.random.choice(sampled_data.n_obs, num_samples, replace=False, random_state=random_state)
+        sampled_indices = np.random.choice(sampled_data.n_obs, num_samples, replace=False)
         sampled_data = sampled_data[sampled_indices]
     df = sampled_data.to_df()
     df['label'] = label

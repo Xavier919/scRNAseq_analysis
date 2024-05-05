@@ -1,5 +1,6 @@
-import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 
 class MLP(nn.Module):
     def __init__(self, input_size, hidden_sizes, output_size=32):
