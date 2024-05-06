@@ -23,7 +23,7 @@ class Autoencoder(nn.Module):
             nn.GELU(True),
             #nn.Dropout(dropout_rate),  
             nn.Linear(256, 1024),
-            nn.ReLU(True),
+            nn.GELU(True),
             #nn.Dropout(dropout_rate),  
             nn.Linear(1024, 4096),
             nn.GELU(True),
