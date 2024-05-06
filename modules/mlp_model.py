@@ -20,7 +20,7 @@ class MLP(nn.Module):
     
 class SiameseMLP(nn.Module):
     def __init__(self, base_network):
-        super(SiameseTransformer, self).__init__()
+        super(SiameseMLP, self).__init__()
         self.base_network = base_network
     
     def forward(self, input_a, input_b):
