@@ -63,7 +63,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
     # Model setup
-    base_net = Autoencoder(dropout=args.dropout).to(rank)
+    base_net = Autoencoder(dropout_rate=args.dropout).to(rank)
     base_net = DDP(base_net, device_ids=[rank])
 
     criterion = nn.MSELoss()
