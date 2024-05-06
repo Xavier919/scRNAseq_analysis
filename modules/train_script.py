@@ -44,7 +44,7 @@ if __name__ == "__main__":
     df = build_dataset(df1, df2)
 
     X = df.drop('label', axis=1).values
-    X = np.expand_dims(X, axis=1)
+    #X = np.expand_dims(X, axis=1)
 
     Y = df['label'].values
 
