@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
 
 class MLP(nn.Module):
@@ -16,3 +17,14 @@ class MLP(nn.Module):
             x = F.relu(layer(x))  
         x = self.layers[-1](x) 
         return x
+    
+class SiameseMLP(nn.Module):
+    def __init__(self, base_network):
+        super(SiameseTransformer, self).__init__()
+        self.base_network = base_network
+    
+    def forward(self, input_a, input_b):
+        processed_a = self.base_network(input_a)
+        processed_b = self.base_network(input_b)
+        distance = torch.norm(processed_a - processed_b, p=2, dim=1)
+        return distance

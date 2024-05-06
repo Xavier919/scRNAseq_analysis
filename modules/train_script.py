@@ -9,6 +9,7 @@ import torch.distributed as dist
 from modules.transformer_model import BaseNetTransformer, SiameseTransformer
 import numpy as np
 import os
+from modules.mlp_model import MLP, SiameseMLP
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -58,8 +59,12 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler, num_workers=8)
 
-    base_net = BaseNetTransformer(embedding_dim=1, hidden_dim=args.hidden_dim, num_layers=args.num_layers, n_heads=args.num_heads, dropout=args.dropout)
-    siamese_model = SiameseTransformer(base_net).to(rank)
+    #base_net = BaseNetTransformer(embedding_dim=1, hidden_dim=args.hidden_dim, num_layers=args.num_layers, n_heads=args.num_heads, dropout=args.dropout)
+    
+    base_net = MLP(X_train.shape[-1], [128,64], output_size=32)
+    #siamese_model = SiameseTransformer(base_net).to(rank)
+    siamese_model = SiameseMLP(base_net).to(rank)
+
     siamese_model = DDP(siamese_model, device_ids=[rank])
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
