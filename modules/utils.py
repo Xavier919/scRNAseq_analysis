@@ -24,6 +24,9 @@ def sample_cells(path, label, num_samples=-1):
     return df
 
 def build_dataset(df1, df2):
+    common_columns = df1.columns.intersection(df2.columns)
+    df1 = df1[common_columns]
+    df2 = df2[common_columns]
     df = pd.concat([df1, df2], ignore_index=True)
     return df
 
