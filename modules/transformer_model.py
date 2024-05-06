@@ -12,6 +12,7 @@ class BaseNetTransformer(nn.Module):
         self.fc = nn.Linear(embedding_dim, out_features)
 
     def forward(self, x):
+        x = x.transpose(1, 2)  
         transformer_out = self.transformer_encoder(x)
         out = transformer_out.mean(dim=1)
         out = self.fc(out)

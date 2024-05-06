@@ -16,22 +16,11 @@ writer = SummaryWriter()
 test_writer = SummaryWriter()
 
 def sample_cells(path, label, num_samples=-1):
-    sampled_data = anndata.read_h5ad(path)
-    if num_samples > 0 and sampled_data.n_obs > num_samples:
-        sampled_indices = np.random.choice(sampled_data.n_obs, num_samples, replace=False)
-        sampled_data = sampled_data[sampled_indices]
-    df = sampled_data.to_df()
-    df['label'] = label
-    return df
-
-def sample_cells(path, label, num_samples=-1):
     anndata_object = anndata.read_h5ad(path)
     df = anndata_object.to_df()
     if num_samples > 0 and len(df) > num_samples:
         df = df.sample(n=num_samples, replace=False)
-
     df['label'] = label
-
     return df
 
 def build_dataset(df1, df2):

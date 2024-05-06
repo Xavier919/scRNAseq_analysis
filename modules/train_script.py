@@ -38,13 +38,14 @@ if __name__ == "__main__":
     rank = int(os.getenv('OMPI_COMM_WORLD_RANK', '0'))
     setup(rank, world_size)
 
-
     df1 = sample_cells('sc_alz/data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
     df2 = sample_cells('sc_alz/data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
 
     df = build_dataset(df1, df2)
 
     X = df.drop('label', axis=1).values
+    X = np.expand_dims(X, axis=1)
+
     Y = df['label'].values
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
@@ -59,11 +60,11 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler, num_workers=8)
 
-    #base_net = BaseNetTransformer(embedding_dim=1, hidden_dim=args.hidden_dim, num_layers=args.num_layers, n_heads=args.num_heads, dropout=args.dropout)
+    base_net = BaseNetTransformer(embedding_dim=1, hidden_dim=args.hidden_dim, num_layers=args.num_layers, n_heads=args.num_heads, dropout=args.dropout)
     
-    base_net = MLP(X_train.shape[-1], [128,64], output_size=32)
-    #siamese_model = SiameseTransformer(base_net).to(rank)
-    siamese_model = SiameseMLP(base_net).to(rank)
+    #base_net = MLP(X_train.shape[-1], [128,64], output_size=32)
+    siamese_model = SiameseTransformer(base_net).to(rank)
+    #siamese_model = SiameseMLP(base_net).to(rank)
 
     siamese_model = DDP(siamese_model, device_ids=[rank])
 
