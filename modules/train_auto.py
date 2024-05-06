@@ -46,6 +46,8 @@ if __name__ == "__main__":
     X = df.drop('label', axis=1).values
     Y = df['label'].values
 
+    print(X.shape)
+
     # Splitting data
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
     
@@ -59,7 +61,7 @@ if __name__ == "__main__":
 
     test_data = torch.Tensor(X_test)
     test_dataset = TensorDataset(test_data)
-    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
     # Model setup
@@ -85,6 +87,7 @@ if __name__ == "__main__":
         for data in train_loader:
             img, = data
             img = img.to(device)
+            print(img.shape)
             output = base_net(img)
             loss = criterion(output, img)
             optimizer.zero_grad()
