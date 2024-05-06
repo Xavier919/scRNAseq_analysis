@@ -7,27 +7,27 @@ class Autoencoder(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Linear(13492, 4096),
-            nn.ReLU(True),
-            nn.Dropout(dropout_rate), 
+            nn.GELU(True),
+            #nn.Dropout(dropout_rate), 
             nn.Linear(4096, 1024),
-            nn.ReLU(True),
-            nn.Dropout(dropout_rate),  
+            nn.GELU(True),
+            #nn.Dropout(dropout_rate),  
             nn.Linear(1024, 256),
-            nn.ReLU(True),
-            nn.Dropout(dropout_rate),
+            nn.GELU(True),
+            #nn.Dropout(dropout_rate),
             nn.Linear(256, 32)
         )
 
         self.decoder = nn.Sequential(
             nn.Linear(32, 256),
-            nn.ReLU(True),
-            nn.Dropout(dropout_rate),  
+            nn.GELU(True),
+            #nn.Dropout(dropout_rate),  
             nn.Linear(256, 1024),
             nn.ReLU(True),
-            nn.Dropout(dropout_rate),  
+            #nn.Dropout(dropout_rate),  
             nn.Linear(1024, 4096),
-            nn.ReLU(True),
-            nn.Dropout(dropout_rate),  
+            nn.GELU(True),
+            #nn.Dropout(dropout_rate),  
             nn.Linear(4096, 13492),
         )
         
