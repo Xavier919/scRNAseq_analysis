@@ -119,7 +119,6 @@ if __name__ == "__main__":
             print(f"Epoch {epoch+1}: Test loss improved, model saved.")
         else:
             no_improvement_count += 1
-            print(f"Epoch {epoch+1}: No improvement in test loss.")
         
         if no_improvement_count >= early_stopping_limit:
             print("Early stopping triggered.")
