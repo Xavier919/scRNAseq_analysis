@@ -46,8 +46,6 @@ if __name__ == "__main__":
     X = df.drop('label', axis=1).values
     Y = df['label'].values
 
-    print(X.shape)
-
     # Splitting data
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
     
@@ -87,7 +85,6 @@ if __name__ == "__main__":
         for data in train_loader:
             img, = data
             img = img.to(device)
-            print(img.shape)
             output = base_net(img)
             loss = criterion(output, img)
             optimizer.zero_grad()
