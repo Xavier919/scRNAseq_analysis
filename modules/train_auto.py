@@ -18,7 +18,6 @@ parser.add_argument("num_samples", type=int)
 parser.add_argument("batch_size", type=int)
 parser.add_argument("epochs", type=int)
 parser.add_argument("lr", type=float)
-parser.add_argument("dropout", type=float)
 parser.add_argument("split", type=int)
 args = parser.parse_args()
 
@@ -63,7 +62,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
     # Model setup
-    base_net = Autoencoder(dropout_rate=args.dropout).to(rank)
+    base_net = Autoencoder().to(rank)
     base_net = DDP(base_net, device_ids=[rank])
 
     criterion = nn.MSELoss()
