@@ -60,10 +60,8 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler, num_workers=1)
 
-    #base_net = BaseNetTransformer(embedding_dim=1, hidden_dim=args.hidden_dim, num_layers=args.num_layers, n_heads=args.num_heads, dropout=args.dropout)
     
-    base_net = MLP(X_train.shape[-1], [1024,512,256,128,64], output_size=32)
-    #siamese_model = SiameseTransformer(base_net).to(rank)
+    base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
     siamese_model = SiameseMLP(base_net).to(rank)
 
     siamese_model = DDP(siamese_model, device_ids=[rank])
