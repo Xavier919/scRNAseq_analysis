@@ -14,7 +14,7 @@ class Autoencoder(nn.Module):
             nn.GELU(),
             nn.Linear(256, 32)
         )
-
+        
         self.decoder = nn.Sequential(
             nn.Linear(32, 256),
             nn.GELU(),

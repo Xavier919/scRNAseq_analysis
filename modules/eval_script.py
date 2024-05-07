@@ -4,13 +4,14 @@ from modules.utils import *
 import pickle
 import numpy as np
 from modules.mlp_model import MLP
+from torch.utils.data import DataLoader, TensorDataset
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
 parser.add_argument("model", type=str)
 parser.add_argument("split", type=int)
 args = parser.parse_args()
-
 
 if __name__ == "__main__":
     # Data preparation

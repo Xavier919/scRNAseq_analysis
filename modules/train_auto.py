@@ -71,7 +71,7 @@ if __name__ == "__main__":
     # Initialize logging and early stopping parameters
     best_loss = float('inf')
     no_improvement_count = 0
-    early_stopping_limit = 5
+    early_stopping_limit = 10
 
     writer = SummaryWriter()
     test_writer = SummaryWriter()
