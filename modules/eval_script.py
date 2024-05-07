@@ -35,6 +35,7 @@ if __name__ == "__main__":
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
     state_dict = {key.replace("module.", ""): value for key, value in checkpoint.items()}
     base_net.load_state_dict(state_dict)
+    base_net.to(device)
 
     predictions = []
     base_net.eval()
