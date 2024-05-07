@@ -39,7 +39,8 @@ if __name__ == "__main__":
     predictions = []
     base_net.eval()
     with torch.no_grad():
-        for data in test_loader:
+        for batch in test_loader:
+            data = batch[0]
             data = data.to(device)
             output = base_net(data)
             predictions.append(output.detach().numpy())
