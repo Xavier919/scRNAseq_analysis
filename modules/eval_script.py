@@ -43,7 +43,7 @@ if __name__ == "__main__":
             data = batch[0]
             data = data.to(device)
             output = base_net(data)
-            predictions.append(output.detach().numpy())
+            predictions.append(output.detach().cpu().numpy())
     predictions = np.stack(predictions)
 
     pickle.dump(predictions, open(f'predictions_{args.split}.pkl', 'wb'))
