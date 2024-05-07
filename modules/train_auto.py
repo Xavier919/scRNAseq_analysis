@@ -114,7 +114,7 @@ if __name__ == "__main__":
         if mean_test_loss < best_loss:
             best_loss = mean_test_loss
             no_improvement_count = 0
-            torch.save(base_net.module.state_dict(), 'best_auto.pth')
+            torch.save(base_net.module.state_dict(), f'best_auto_{args.split}.pth')
             print(f"Epoch {epoch+1}: Test loss improved, model saved.")
         else:
             no_improvement_count += 1

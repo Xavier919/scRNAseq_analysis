@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader, DistributedSampler
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
-from modules.transformer_model import BaseNetTransformer, SiameseTransformer
 import numpy as np
 import os
 from modules.mlp_model import MLP, SiameseMLP
