@@ -26,12 +26,12 @@ if __name__ == "__main__":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    test_data = torch.Tensor(X_test)
+    test_data = torch.Tensor(X_test, Y_test)
     test_dataset = TensorDataset(test_data)
     test_loader = DataLoader(test_dataset, batch_size=1)
 
     #base_net = MLP(X_test.shape[-1], [4096,1024,256], output_size=32)
-    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
+    base_net = DeepKAN(X_train.shape[-1], [256,32])
     model_path = args.model
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
     state_dict = {key: value for key, value in checkpoint.items()}
@@ -42,10 +42,10 @@ if __name__ == "__main__":
     base_net.eval()
     with torch.no_grad():
         for batch in test_loader:
-            data = batch[0]
-            data = data.to(device)
-            output = base_net(data)
-            predictions.append(output.detach().cpu().numpy())
+            data_X, data_Y = batch[0], batch[1]
+            data_X = data_X.to(device)
+            output = base_net(data_X)
+            predictions.append((output.detach().cpu().numpy(), data_Y))
     predictions = np.stack(predictions)
 
     pickle.dump(predictions, open(f'predictions_{args.split}.pkl', 'wb'))
