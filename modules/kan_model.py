@@ -78,16 +78,16 @@ class SplineLinearLayer(torch.nn.Module):
         unreduced_spline_output = torch.bmm(splines, orig_coeff).permute(1, 0, 2)
 
         x_sorted = torch.sort(x, dim=0)[0]
-        adaptive_knots = x_sorted[torch.linspace(0, batch - 1, self.num_knots + 1, dtype=torch.int64)]
+        adaptive_knots = x_sorted[torch.linspace(0, batch - 1, self.num_knots + 1, dtype=torch.int64, device=x.device)]
 
         uniform_step = (x_sorted[-1] - x_sorted[0] + 2 * margin) / self.num_knots
-        uniform_knots = torch.arange(self.num_knots + 1, dtype=torch.float32).unsqueeze(1) * uniform_step + x_sorted[0] - margin
+        uniform_knots = torch.arange(self.num_knots + 1, dtype=torch.float32, device=x.device).unsqueeze(1) * uniform_step + x_sorted[0] - margin
 
         knots = self.grid_epsilon * uniform_knots + (1 - self.grid_epsilon) * adaptive_knots
         knots = torch.cat([
-            knots[:1] - uniform_step * torch.arange(self.spline_order, 0, -1).unsqueeze(1),
+            knots[:1] - uniform_step * torch.arange(self.spline_order, 0, -1, device=x.device).unsqueeze(1),
             knots,
-            knots[-1:] + uniform_step * torch.arange(1, self.spline_order + 1).unsqueeze(1),
+            knots[-1:] + uniform_step * torch.arange(1, self.spline_order + 1, device=x.device).unsqueeze(1),
         ], dim=0)
 
         self.knots.copy_(knots.T)
