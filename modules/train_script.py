@@ -9,7 +9,7 @@ import torch.distributed as dist
 import numpy as np
 import os
 #from modules.mlp_model import MLP, SiameseMLP
-from modules.kan_model import KAN, SiameseMLP
+from modules.kan_model import DeepKAN, SiameseMLP
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
     
-    base_net = KAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
+    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
     siamese_model = SiameseMLP(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
