@@ -60,9 +60,11 @@ if __name__ == "__main__":
     #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
     
     base_net = KAN([X_train.shape[-1], 32])
-    base_net.to(device)
+    base_net = base_net.to(device)
 
-    siamese_model = SiameseMLP(base_net).to(rank)
+    siamese_model = SiameseMLP(base_net).to(device)
+
+    siamese_model = siamese_model.to(rank)
 
     siamese_model = DDP(siamese_model, device_ids=[rank])
 
