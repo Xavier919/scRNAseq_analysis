@@ -46,7 +46,7 @@ if __name__ == "__main__":
     
     #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
     
-    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
+    base_net = DeepKAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
     siamese_model = SiameseMLP(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
