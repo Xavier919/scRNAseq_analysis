@@ -21,7 +21,6 @@ if __name__ == "__main__":
     X = df.drop('label', axis=1).values
     Y = df['label'].values
 
-    # Splitting data
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,6 +46,5 @@ if __name__ == "__main__":
             data_X = data_X.to(device)
             output = base_net(data_X)
             predictions.append((output.detach().cpu().numpy(), data_Y))
-    #predictions = np.stack(predictions)
 
     pickle.dump(predictions, open(f'predictions_{args.split}.pkl', 'wb'))

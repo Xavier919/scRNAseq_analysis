@@ -8,7 +8,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import numpy as np
 import os
-#from modules.mlp_model import MLP, SiameseMLP
+from modules.mlp_model import MLP, SiameseMLP
 from modules.kan_model import DeepKAN, SiameseKAN
 
 parser = argparse.ArgumentParser()
@@ -43,10 +43,11 @@ if __name__ == "__main__":
     test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
-    #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
+    base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32).to(device)
+    siamese_model = SiameseMLP(base_net).to(device)
     
-    base_net = DeepKAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
-    siamese_model = SiameseKAN(base_net).to(device)
+    #base_net = DeepKAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
+    #siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
@@ -66,6 +67,6 @@ if __name__ == "__main__":
 
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            torch.save(siamese_model.state_dict(), f'best_model_{args.split}.pth')
-            torch.save(siamese_model.base_network.state_dict(), f'base_net_model_{args.split}.pth')
-            print("Model and Base Model saved as best model")
+            torch.save(siamese_model.state_dict(), f'siamese_{args.split}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'embed_{args.split}.pth')
+            print("Model saved as best model")
