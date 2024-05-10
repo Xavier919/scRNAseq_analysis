@@ -154,9 +154,9 @@ class DeepKAN(torch.nn.Module):
         return sum(layer._regularization_loss(regularize_activation, regularize_entropy) for layer in self.layers)
     
 
-class SiameseMLP(torch.nn.Module):
+class SiameseKAN(torch.nn.Module):
     def __init__(self, base_network):
-        super(SiameseMLP, self).__init__()
+        super(SiameseKAN, self).__init__()
         self.base_network = base_network
     
     def forward(self, input_a, input_b):

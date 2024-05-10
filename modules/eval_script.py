@@ -47,6 +47,6 @@ if __name__ == "__main__":
             data_X = data_X.to(device)
             output = base_net(data_X)
             predictions.append((output.detach().cpu().numpy(), data_Y))
-    predictions = np.stack(predictions)
+    #predictions = np.stack(predictions)
 
     pickle.dump(predictions, open(f'predictions_{args.split}.pkl', 'wb'))
