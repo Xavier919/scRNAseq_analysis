@@ -67,6 +67,6 @@ if __name__ == "__main__":
 
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            torch.save(siamese_model.module.state_dict(), f'best_model_{args.split}.pth')
-            torch.save(siamese_model.module.base_network.state_dict(), f'base_net_model_{args.split}.pth')
+            torch.save(siamese_model.state_dict(), f'best_model_{args.split}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'base_net_model_{args.split}.pth')
             print("Model and Base Model saved as best model")
