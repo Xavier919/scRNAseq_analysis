@@ -3,7 +3,7 @@ import torch
 from modules.utils import *
 import pickle
 import numpy as np
-#from modules.mlp_model import MLP
+from modules.mlp_model import MLP
 from torch.utils.data import DataLoader, TensorDataset
 from modules.kan_model import DeepKAN
 
