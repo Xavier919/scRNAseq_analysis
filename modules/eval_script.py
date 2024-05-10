@@ -3,9 +3,9 @@ import torch
 from modules.utils import *
 import pickle
 import numpy as np
-from modules.mlp_model import MLP
+#from modules.mlp_model import MLP
 from torch.utils.data import DataLoader, TensorDataset
-
+from modules.kan_model import DeepKAN
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -30,10 +30,11 @@ if __name__ == "__main__":
     test_dataset = TensorDataset(test_data)
     test_loader = DataLoader(test_dataset, batch_size=1)
 
-    base_net = MLP(X_test.shape[-1], [4096,1024,256], output_size=32)
+    #base_net = MLP(X_test.shape[-1], [4096,1024,256], output_size=32)
+    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
     model_path = args.model
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
-    state_dict = {key.replace("module.", ""): value for key, value in checkpoint.items()}
+    state_dict = {key: value for key, value in checkpoint.items()}
     base_net.load_state_dict(state_dict)
     base_net.to(device)
 
