@@ -49,6 +49,7 @@ class SplineLinearLayer(torch.nn.Module):
         return self._fit_curve_to_coefficients(self.knots.T[self.spline_order : -self.spline_order], noise)
 
     def _compute_b_splines(self, x):
+        self.knots = self.knots.to(x.device)
         x = x.unsqueeze(-1)
         bases = ((x >= self.knots[:, :-1]) & (x < self.knots[:, 1:])).to(x.dtype)
         for k in range(1, self.spline_order + 1):
@@ -94,9 +95,6 @@ class SplineLinearLayer(torch.nn.Module):
 
         self.knots.copy_(knots.T)
         self.spline_weights.data.copy_(self._fit_curve_to_coefficients(x, unreduced_spline_output))
-
-
-
 
 class DeepKAN(torch.nn.Module):
     """
