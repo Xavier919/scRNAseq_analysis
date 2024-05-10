@@ -21,19 +21,8 @@ parser.add_argument("num_pairs", type=int)
 parser.add_argument("split", type=int)
 args = parser.parse_args()
 
-def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-
-def cleanup():
-    dist.destroy_process_group()
 
 if __name__ == "__main__":
-    world_size = torch.cuda.device_count()  
-    rank = int(os.getenv('OMPI_COMM_WORLD_RANK', '0'))
-    setup(rank, world_size)
 
     df1 = sample_cells('sc_alz/data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
     df2 = sample_cells('sc_alz/data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
@@ -49,44 +38,35 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = PairedDataset(X_train, Y_train, args.num_pairs)
-    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, num_workers=1)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
 
     test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
-    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler, num_workers=1)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
     
     #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32)
     
-    base_net = KAN([X_train.shape[-1], 32]).to(device)
+    base_net = KAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
     siamese_model = SiameseMLP(base_net).to(device)
-    siamese_model = DDP(siamese_model, device_ids=[device.index])
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
-    if dist.get_rank() == 0:
-        print(f"Number of pairs: {args.num_pairs}")
-        print(f"Batch_size: {args.batch_size}")
-        print(f"Learning rate: {args.lr}")
-        print(f"Dropout: {args.dropout}")
-        print(f"Epochs: {args.epochs}")
-        print(f"Split: {args.split}")
+    print(f"Number of pairs: {args.num_pairs}")
+    print(f"Batch_size: {args.batch_size}")
+    print(f"Learning rate: {args.lr}")
+    print(f"Dropout: {args.dropout}")
+    print(f"Epochs: {args.epochs}")
+    print(f"Split: {args.split}")
 
     epochs = args.epochs
     best_accuracy = 0
     for epoch in range(epochs):
-        train_sampler.set_epoch(epoch)
-        test_sampler.set_epoch(epoch)
         train_loss = train_epoch(siamese_model, train_loader, optimizer, device, epoch)
         val_accuracy = eval_model(siamese_model, test_loader, device, epoch)
-        if dist.get_rank() == 0:
-            print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
+        print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
 
-        if rank == 0 and val_accuracy > best_accuracy:
+        if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
             torch.save(siamese_model.module.state_dict(), f'best_model_{args.split}.pth')
             torch.save(siamese_model.module.base_network.state_dict(), f'base_net_model_{args.split}.pth')
             print("Model and Base Model saved as best model")
-
-    cleanup()

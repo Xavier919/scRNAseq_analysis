@@ -2,6 +2,10 @@ import torch.nn.functional as F
 import math
 import torch
 
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+
 class SplineLinearLayer(torch.nn.Module):
     def __init__(self, input_dim, output_dim, num_knots=5, spline_order=3,
                  noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
@@ -30,15 +34,13 @@ class SplineLinearLayer(torch.nn.Module):
         self._initialize_parameters()
 
     def _initialize_parameters(self):
-
-        torch.nn.init.xavier_uniform_(self.base_weights, gain=math.sqrt(2))
+        torch.nn.init.xavier_uniform_(self.base_weights, gain=torch.sqrt(torch.tensor(2.0)))
         noise = torch.rand(self.num_knots + 1, self.input_dim, self.output_dim) - 0.5
         self.spline_weights.data.copy_(self.spline_scale * self._initialize_spline_weights(noise))
         if self.standalone_spline_scaling:
-            torch.nn.init.xavier_uniform_(self.spline_scales, gain=math.sqrt(2))
+            torch.nn.init.xavier_uniform_(self.spline_scales, gain=torch.sqrt(torch.tensor(2.0)))
 
     def _calculate_knots(self, grid_range, num_knots, spline_order):
-
         h = (grid_range[1] - grid_range[0]) / num_knots
         knots = torch.arange(-spline_order, num_knots + spline_order + 1) * h + grid_range[0]
         return knots.expand(self.input_dim, -1).contiguous()
@@ -94,18 +96,46 @@ class SplineLinearLayer(torch.nn.Module):
         self.spline_weights.data.copy_(self._fit_curve_to_coefficients(x, unreduced_spline_output))
 
 
-class KAN(torch.nn.Module):
-    def __init__(self, hidden_layers, num_knots=5, spline_order=3,
+
+
+class DeepKAN(torch.nn.Module):
+    """
+    Initializes the DeepKAN.
+
+    Args:
+        input_dim (int): Dimensionality of input data.
+        hidden_layers (list): List of hidden layer dimensions (The last one should the target layer)
+        num_knots (int): Number of knots for the spline.
+        spline_order (int): Order of the spline.
+        noise_scale (float): Scale of the noise.
+        base_scale (float): Scale of the base weights.
+        spline_scale (float): Scale of the spline weights.
+        activation (torch.nn.Module): Activation function to use.
+        grid_epsilon (float): Epsilon value for the grid.
+        grid_range (list): Range of the grid.
+    """
+    def __init__(self, input_dim, hidden_layers, num_knots=5, spline_order=3,
                  noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
                  activation=torch.nn.SiLU, grid_epsilon=0.02, grid_range=[-1, 1]):
-        super(KAN, self).__init__()
+        super(DeepKAN, self).__init__()
+        layers = [input_dim] + hidden_layers
         self.layers = torch.nn.ModuleList()
-        for in_dim, out_dim in zip(hidden_layers, hidden_layers[1:]):
+        for in_dim, out_dim in zip(layers, layers[1:]):
             self.layers.append(SplineLinearLayer(in_dim, out_dim, num_knots, spline_order,
                                                  noise_scale, base_scale, spline_scale,
                                                  activation, grid_epsilon, grid_range))
 
     def forward(self, x, update_knots=False):
+        """
+        Forward pass of the DeepKAN.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+            update_knots (bool): Whether to update knots during forward pass.
+
+        Returns:
+            torch.Tensor: Output tensor.
+        """
         for layer in self.layers:
             if update_knots:
                 layer._update_knots(x)
@@ -113,6 +143,16 @@ class KAN(torch.nn.Module):
         return x
 
     def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
+        """
+        Computes the regularization loss of the DeepKAN.
+
+        Args:
+            regularize_activation (float): Regularization strength for activation.
+            regularize_entropy (float): Regularization strength for entropy.
+
+        Returns:
+            torch.Tensor: Regularization loss.
+        """
         return sum(layer._regularization_loss(regularize_activation, regularize_entropy) for layer in self.layers)
     
 
@@ -122,8 +162,6 @@ class SiameseMLP(torch.nn.Module):
         self.base_network = base_network
     
     def forward(self, input_a, input_b):
-        input_a = input_a.to(self.base_network.device)
-        input_b = input_b.to(self.base_network.device)
         processed_a = self.base_network(input_a)
         processed_b = self.base_network(input_b)
         distance = torch.norm(processed_a - processed_b, p=2, dim=1)
