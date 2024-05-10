@@ -122,6 +122,8 @@ class SiameseMLP(torch.nn.Module):
         self.base_network = base_network
     
     def forward(self, input_a, input_b):
+        input_a = input_a.to(self.base_network.device)
+        input_b = input_b.to(self.base_network.device)
         processed_a = self.base_network(input_a)
         processed_b = self.base_network(input_b)
         distance = torch.norm(processed_a - processed_b, p=2, dim=1)
