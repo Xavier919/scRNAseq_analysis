@@ -20,7 +20,7 @@ parser.add_argument("dropout", type=float)
 parser.add_argument("num_pairs", type=int)
 parser.add_argument("split", type=int)
 parser.add_argument("tag", type=str)
-parser.add_argument("h_layers", type=list)
+parser.add_argument('-h_layers', nargs="+", type=int)
 args = parser.parse_args()
 
 
@@ -45,12 +45,14 @@ if __name__ == "__main__":
     test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
+    hidden_layers = list(args.h_layers)
+
     if args.tag == 'mlp':
-        base_net = MLP(X_train.shape[-1], args.h_layers, output_size=32).to(device)
+        base_net = MLP(X_train.shape[-1], hidden_layers, output_size=32).to(device)
         siamese_model = SiameseMLP(base_net).to(device)
 
     elif args.tag == 'kan':
-        base_net = DeepKAN(X_train.shape[-1], args.h_layers).to(device)
+        base_net = DeepKAN(X_train.shape[-1], hidden_layers).to(device)
         siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
