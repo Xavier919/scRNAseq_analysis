@@ -47,7 +47,7 @@ if __name__ == "__main__":
     hidden_layers = list(args.h_layers)
 
     if args.tag == 'mlp':
-        base_net = MLP(X_train.shape[-1], hidden_layers, output_size=32).to(device)
+        base_net = MLP(X_train.shape[-1], hidden_layers, output_size=10).to(device)
         siamese_model = SiameseMLP(base_net).to(device)
 
     elif args.tag == 'kan':
