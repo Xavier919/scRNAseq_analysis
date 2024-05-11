@@ -11,6 +11,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
 parser.add_argument("model", type=str)
 parser.add_argument("split", type=int)
+parser.add_argument("tag", type=str)
+parser.add_argument("h_layers", type=list)
+
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -30,8 +33,13 @@ if __name__ == "__main__":
     test_dataset = TensorDataset(test_data, test_labels)
     test_loader = DataLoader(test_dataset, batch_size=1)
 
-    #base_net = MLP(X_test.shape[-1], [256], output_size=32)
-    base_net = DeepKAN(X_test.shape[-1], [256,32])
+
+    if args.tag == 'mlp':
+        base_net = MLP(X_train.shape[-1], args.h_layers, output_size=32)
+
+    elif args.tag == 'kan':
+        base_net = DeepKAN(X_train.shape[-1], args.h_layers)
+
     model_path = args.model
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
     state_dict = {key: value for key, value in checkpoint.items()}
@@ -47,4 +55,4 @@ if __name__ == "__main__":
             output = base_net(data_X)
             predictions.append((output.detach().cpu().numpy(), data_Y))
 
-    pickle.dump(predictions, open(f'predictions_{args.split}.pkl', 'wb'))
+    pickle.dump(predictions, open(f'embed_{args.tag}_{args.h_layers}_{args.split}.pkl', 'wb'))
