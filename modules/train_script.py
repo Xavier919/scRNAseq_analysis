@@ -84,6 +84,6 @@ if __name__ == "__main__":
         else:
             no_improvement_count += 1  
 
-        if no_improvement_count >= 5:
+        if no_improvement_count >= 10:
             print("No improvement in validation accuracy for 5 consecutive epochs. Training stopped.")
             break
