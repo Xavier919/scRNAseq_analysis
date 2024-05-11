@@ -79,11 +79,11 @@ if __name__ == "__main__":
             best_accuracy = val_accuracy
             no_improvement_count = 0  
             #torch.save(siamese_model.state_dict(), f'siamese_{args.split}.pth')
-            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.h_layers}_{args.split}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{hidden_layers}_{args.split}.pth')
             print("Model saved as best model")
         else:
             no_improvement_count += 1  
 
         if no_improvement_count >= 10:
-            print("No improvement in validation accuracy for 5 consecutive epochs. Training stopped.")
+            print("No improvement in validation accuracy for 10 consecutive epochs. Training stopped.")
             break
