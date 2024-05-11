@@ -30,8 +30,8 @@ if __name__ == "__main__":
     test_dataset = TensorDataset(test_data, test_labels)
     test_loader = DataLoader(test_dataset, batch_size=1)
 
-    base_net = MLP(X_test.shape[-1], [4096,1024,256], output_size=32)
-    #base_net = DeepKAN(X_test.shape[-1], [4096,1024,256,32])
+    #base_net = MLP(X_test.shape[-1], [256], output_size=32)
+    base_net = DeepKAN(X_test.shape[-1], [256,32])
     model_path = args.model
     checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
     state_dict = {key: value for key, value in checkpoint.items()}
