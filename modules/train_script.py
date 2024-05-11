@@ -43,11 +43,11 @@ if __name__ == "__main__":
     test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
-    base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32).to(device)
-    siamese_model = SiameseMLP(base_net).to(device)
+    #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32).to(device)
+    #siamese_model = SiameseMLP(base_net).to(device)
     
-    #base_net = DeepKAN(X_train.shape[-1], [4096,1024,256,32]).to(device)
-    #siamese_model = SiameseKAN(base_net).to(device)
+    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
+    siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
