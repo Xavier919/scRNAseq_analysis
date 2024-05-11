@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     outputs = []
     targets = []
-    
+
     base_net.eval()
     torch.no_grad()
     for data_X, data_Y in test_loader:
@@ -59,4 +59,4 @@ if __name__ == "__main__":
         targets.append(int(data_Y.numpy()[0]))
 
     results = (outputs, targets)
-    pickle.dump(results, open(f'embed_{args.tag}_{args.h_layers}_{args.split}.pkl', 'wb'))
+    pickle.dump(results, open(f'embed_{args.tag}_{hidden_layers}_{args.split}.pkl', 'wb'))
