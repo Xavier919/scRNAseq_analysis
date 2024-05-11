@@ -19,6 +19,8 @@ parser.add_argument("lr", type=float)
 parser.add_argument("dropout", type=float)
 parser.add_argument("num_pairs", type=int)
 parser.add_argument("split", type=int)
+parser.add_argument("tag", type=str)
+parser.add_argument("h_layers", type=list)
 args = parser.parse_args()
 
 
@@ -43,11 +45,13 @@ if __name__ == "__main__":
     test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
-    #base_net = MLP(X_train.shape[-1], [4096,1024,256], output_size=32).to(device)
-    #siamese_model = SiameseMLP(base_net).to(device)
-    
-    base_net = DeepKAN(X_train.shape[-1], [256,32]).to(device)
-    siamese_model = SiameseKAN(base_net).to(device)
+    if args.tag == 'mlp':
+        base_net = MLP(X_train.shape[-1], args.h_layers, output_size=32).to(device)
+        siamese_model = SiameseMLP(base_net).to(device)
+
+    elif args.tag == 'kan':
+        base_net = DeepKAN(X_train.shape[-1], args.h_layers).to(device)
+        siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
@@ -57,9 +61,13 @@ if __name__ == "__main__":
     print(f"Dropout: {args.dropout}")
     print(f"Epochs: {args.epochs}")
     print(f"Split: {args.split}")
+    print(f"Tag: {args.tag}")
+    print(f"Hidden layers: {args.h_layers}")
 
     epochs = args.epochs
     best_accuracy = 0
+    no_improvement_count = 0 
+
     for epoch in range(epochs):
         train_loss = train_epoch(siamese_model, train_loader, optimizer, device, epoch)
         val_accuracy = eval_model(siamese_model, test_loader, device, epoch)
@@ -67,6 +75,13 @@ if __name__ == "__main__":
 
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
-            torch.save(siamese_model.state_dict(), f'siamese_{args.split}.pth')
-            torch.save(siamese_model.base_network.state_dict(), f'embed_{args.split}.pth')
+            no_improvement_count = 0  
+            #torch.save(siamese_model.state_dict(), f'siamese_{args.split}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}.pth')
             print("Model saved as best model")
+        else:
+            no_improvement_count += 1  
+
+        if no_improvement_count >= 5:
+            print("No improvement in validation accuracy for 5 consecutive epochs. Training stopped.")
+            break
