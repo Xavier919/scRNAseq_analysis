@@ -77,7 +77,7 @@ if __name__ == "__main__":
             best_accuracy = val_accuracy
             no_improvement_count = 0  
             #torch.save(siamese_model.state_dict(), f'siamese_{args.split}.pth')
-            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.h_layers}_{args.split}.pth')
             print("Model saved as best model")
         else:
             no_improvement_count += 1  
