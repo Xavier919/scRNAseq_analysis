@@ -2,10 +2,6 @@ import torch.nn.functional as F
 import math
 import torch
 
-import torch
-import torch.nn.functional as F
-import torch.optim as optim
-
 class SplineLinearLayer(torch.nn.Module):
     def __init__(self, input_dim, output_dim, num_knots=5, spline_order=3,
                  noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
