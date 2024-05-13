@@ -11,6 +11,7 @@ from modules.autoencoder_model import Autoencoder
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
+from modules.kan_model import DeepKAN
 
 
 parser = argparse.ArgumentParser()
@@ -45,12 +46,10 @@ if __name__ == "__main__":
     X = df.drop('label', axis=1).values
     Y = df['label'].values
 
-    # Splitting data
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Setting up data loaders for distributed training
     train_data = torch.Tensor(X_train)
     train_dataset = TensorDataset(train_data)
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
@@ -61,14 +60,13 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
-    # Model setup
-    base_net = Autoencoder().to(rank)
+    #base_net = Autoencoder().to(rank)
+    base_net = DeepKAN(X_train.shape[-1], [256,32,256,X_train.shape[-1]]).to(rank)
     base_net = DDP(base_net, device_ids=[rank])
 
     criterion = nn.MSELoss()
     optimizer = optim.Adam(base_net.parameters(), lr=args.lr)
 
-    # Initialize logging and early stopping parameters
     best_loss = float('inf')
     no_improvement_count = 0
     early_stopping_limit = 10
@@ -95,7 +93,6 @@ if __name__ == "__main__":
         print('Epoch [{}/{}], Train loss: {:.4f}'.format(epoch+1, args.epochs, mean_train_loss))
         writer.add_scalar("Loss/train", mean_train_loss, epoch)
 
-        # Evaluate on test data
         base_net.eval()
         test_loss = 0
         num_batches = 0
