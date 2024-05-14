@@ -9,7 +9,6 @@ from modules.kan_model import DeepKAN
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
-parser.add_argument("model", type=str)
 parser.add_argument("tag", type=str)
 parser.add_argument('-h_layers', nargs="+", type=int)
 
