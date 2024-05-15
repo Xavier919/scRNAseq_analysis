@@ -12,7 +12,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from modules.kan_model import DeepKAN
-
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+from scipy.sparse import csr_matrix
+import anndata
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -31,6 +34,28 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
+
+def merge_dataframes(sc_file_path, anno_file_path):
+    # Use anndata package to read file
+    adata = anndata.read_h5ad(sc_file_path)
+    # Check if the data is a sparse matrix and convert to dataframe
+    sc_df = pd.DataFrame.sparse.from_spmatrix(adata.X) if isinstance(adata.X, csr_matrix) else adata.to_df()
+    # Drop columns starting with 'mt-'
+    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
+    # Normalize each row
+    sc_df = sc_df.apply(lambda x: (x - x.min()) / (x.max() - x.min()), axis=1)
+    # Read the file, skipping the first 4 lines
+    anno_df = pd.read_csv(anno_file_path, skiprows=4)
+    # Set 'cell_id' as the index and keep only the 'class label' column
+    anno_df = anno_df.set_index('cell_id')[['class_label']]
+    # Fit and transform the 'class label' column
+    anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
+    # Merge dataframes on indexes
+    merged_df = sc_df.merge(anno_df, left_index=True, right_index=True)
+    # Reset the index of the merged dataframe
+    merged_df.reset_index(drop=True, inplace=True)
+    return merged_df
+
 writer = SummaryWriter()
 test_writer = SummaryWriter()
 
@@ -39,12 +64,16 @@ if __name__ == "__main__":
     rank = int(os.getenv('OMPI_COMM_WORLD_RANK', '0'))
     setup(rank, world_size)
 
-    # Data preparation
-    df1 = sample_cells('sc_alz/data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
-    df2 = sample_cells('sc_alz/data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
-    df = build_dataset(df1, df2)
-    X = df.drop('label', axis=1).values
-    Y = df['label'].values
+    dfA = merge_dataframes('sc_alz/data/A_mapping.csv')
+    dfB = merge_dataframes('sc_alz/data/B_mapping.csv')
+    dfC = merge_dataframes('sc_alz/data/C_mapping.csv')
+    dfD = merge_dataframes('sc_alz/data/D_mapping.csv')
+
+    merged_df = pd.concat([dfA, dfB, dfC, dfD], ignore_index=True)
+
+    X = merged_df.drop('class_label', axis=1).values
+
+    Y = merged_df['class_label'].values
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
     
