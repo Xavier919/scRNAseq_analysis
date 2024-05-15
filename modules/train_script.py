@@ -14,6 +14,8 @@ import anndata
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from scipy.sparse import csr_matrix
+import scanpy as sc
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -29,12 +31,14 @@ args = parser.parse_args()
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
+    # Normalize the data
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    # Logarithmize the data
+    sc.pp.log1p(adata)
     # Check if the data is a sparse matrix and convert to dataframe
     sc_df = pd.DataFrame.sparse.from_spmatrix(adata.X) if isinstance(adata.X, csr_matrix) else adata.to_df()
     # Drop columns starting with 'mt-'
     sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
-    # Normalize each row
-    #sc_df = sc_df.apply(lambda x: (x - x.min()) / (x.max() - x.min()), axis=1)
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
     # Set 'cell_id' as the index and keep only the 'class label' column
