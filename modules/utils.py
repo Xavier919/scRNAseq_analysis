@@ -23,11 +23,16 @@ def sample_cells(path, label, num_samples=-1):
     df['label'] = label
     return df
 
-def build_dataset(df1, df2):
-    common_columns = df1.columns.intersection(df2.columns)
+def build_dataset(df1, df2, df3, df4):
+    # Find common columns among all dataframes
+    common_columns = df1.columns.intersection(df2.columns).intersection(df3.columns).intersection(df4.columns)
+    # Select only the common columns from each dataframe
     df1 = df1[common_columns]
     df2 = df2[common_columns]
-    df = pd.concat([df1, df2], ignore_index=True)
+    df3 = df3[common_columns]
+    df4 = df4[common_columns]
+    # Concatenate all dataframes
+    df = pd.concat([df1, df2, df3, df4], ignore_index=True)
     return df
 
 def euclid_dis(vects):
