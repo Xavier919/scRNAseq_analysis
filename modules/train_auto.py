@@ -40,11 +40,11 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
     # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
+    #sc.pp.normalize_total(adata, target_sum=1e4)
     # Logarithmize the data
-    sc.pp.log1p(adata)
+    #sc.pp.log1p(adata)
     # Scale the data
-    sc.pp.scale(adata, max_value=10)
+    #sc.pp.scale(adata, max_value=10)
     # Check if the data is a sparse matrix and convert to dataframe
     sc_df = pd.DataFrame.sparse.from_spmatrix(adata.X) if isinstance(adata.X, csr_matrix) else adata.to_df()
     # Drop columns starting with 'mt-'
