@@ -50,7 +50,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Merge dataframes on indexes
     merged_df = sc_df.merge(anno_df, left_index=True, right_index=True)
     # Reset the index of the merged dataframe
-    merged_df.reset_index(drop=True, inplace=True)
+    #merged_df.reset_index(drop=True, inplace=True)
     return merged_df
 
 
