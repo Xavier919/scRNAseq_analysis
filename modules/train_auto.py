@@ -34,7 +34,6 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)

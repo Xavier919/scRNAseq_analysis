@@ -50,10 +50,10 @@ def merge_dataframes(sc_file_path, anno_file_path):
 
 if __name__ == "__main__":
 
-    dfA = merge_dataframes('sc_alz/data/A_mapping.csv')
-    dfB = merge_dataframes('sc_alz/data/B_mapping.csv')
-    dfC = merge_dataframes('sc_alz/data/C_mapping.csv')
-    dfD = merge_dataframes('sc_alz/data/D_mapping.csv')
+    dfA = merge_dataframes('sc_alz/data/A_count.h5ad', 'sc_alz/data/A_mapping.csv')
+    dfB = merge_dataframes('sc_alz/data/B_count.h5ad', 'sc_alz/data/B_mapping.csv')
+    dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
+    dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
 
     merged_df = pd.concat([dfA, dfB, dfC, dfD], ignore_index=True)
 
