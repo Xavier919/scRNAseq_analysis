@@ -42,7 +42,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Drop columns starting with 'mt-'
     sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
     # Normalize each row
-    sc_df = sc_df.apply(lambda x: (x - x.min()) / (x.max() - x.min()), axis=1)
+    #sc_df = sc_df.apply(lambda x: (x - x.min()) / (x.max() - x.min()), axis=1)
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
     # Set 'cell_id' as the index and keep only the 'class label' column
