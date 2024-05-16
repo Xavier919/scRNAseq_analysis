@@ -28,7 +28,6 @@ class Autoencoder(nn.Module):
             nn.Linear(2048, 4096),
             nn.GELU(),
             nn.Linear(4096, self.input_size),
-            nn.Sigmoid()  # or another suitable activation function
         )
         
     def forward(self, x):
