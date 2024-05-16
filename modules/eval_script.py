@@ -15,11 +15,17 @@ parser.add_argument('-h_layers', nargs="+", type=int)
 args = parser.parse_args()
 
 if __name__ == "__main__":
-    df1 = sample_cells('sc_alz/data/human_pancreas_norm.h5ad', 0, num_samples=args.num_samples)
-    df2 = sample_cells('sc_alz/data/Lung_atlas_public.h5ad', 1, num_samples=args.num_samples)
-    df = build_dataset(df1, df2)
-    X = df.drop('label', axis=1).values
-    Y = df['label'].values
+    dfA = merge_dataframes('sc_alz/data/A_count.h5ad', 'sc_alz/data/A_mapping.csv')
+    dfB = merge_dataframes('sc_alz/data/B_count.h5ad', 'sc_alz/data/B_mapping.csv')
+    dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
+    dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
+
+    #merged_df = merge_dataframes('sc_alz/data/fede_count.h5ad', 'sc_alz/data/fede_mapping.csv')
+
+    merged_df = build_dataset(dfA, dfB, dfC, dfD)
+
+    X = merged_df.drop('label', axis=1).values
+    Y = merged_df['label'].values
 
     for split in range(4):
 
