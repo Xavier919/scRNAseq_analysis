@@ -39,34 +39,42 @@ def cleanup():
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
-    # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    # Logarithmize the data
-    sc.pp.log1p(adata)
-    # Scale the data
-    sc.pp.scale(adata, max_value=10)
+
     # Check if the data is a sparse matrix and convert to dataframe
     if isinstance(adata.X, csr_matrix):
         sc_df = pd.DataFrame.sparse.from_spmatrix(adata.X, index=adata.obs_names, columns=adata.var_names)
     else:
         sc_df = adata.to_df()
+
     # Set the index name to 'cell_id'
     sc_df.index.name = 'cell_id'
+
     # Convert index to string
     sc_df.index = sc_df.index.astype(str)
+
     # Drop columns starting with 'mt-'
     sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
+
+    # Iterate through each column and remove columns with fewer than 10 non-zero values
+    non_zero_counts = sc_df.astype(bool).sum(axis=0)
+    sc_df = sc_df.loc[:, non_zero_counts >= 100]
+
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
+
     # Set 'cell_id' as the index and keep only the 'class label' column
     anno_df = anno_df.set_index('cell_id')[['class_label']]
+
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
+
     # Fit and transform the 'class label' column
     anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
-    print(anno_df.head())
+
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
+
+    print(merged_df.head())
     return merged_df
 
 writer = SummaryWriter()
