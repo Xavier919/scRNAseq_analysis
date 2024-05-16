@@ -56,7 +56,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     sc_df.index = sc_df.index.astype(str)
     
     # Drop columns starting with 'mt-'
-    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
+    #sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
     
     # Iterate through each column and remove columns with fewer than 10 non-zero values
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
