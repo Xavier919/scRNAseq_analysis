@@ -11,6 +11,8 @@ class Autoencoder(nn.Module):
             nn.GELU(),
             nn.Linear(4096, 2048),
             nn.GELU(),
+            nn.Linear(2048, 512),
+            nn.GELU(),
             nn.Linear(512, 128),
             nn.GELU(),
             nn.Linear(128, 32),
@@ -21,9 +23,12 @@ class Autoencoder(nn.Module):
             nn.GELU(),
             nn.Linear(128, 512),
             nn.GELU(),
+            nn.Linear(512, 2048),
+            nn.GELU(),
             nn.Linear(2048, 4096),
             nn.GELU(),
             nn.Linear(4096, self.input_size),
+            nn.Sigmoid()  # or another suitable activation function
         )
         
     def forward(self, x):
