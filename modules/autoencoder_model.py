@@ -2,11 +2,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Autoencoder(nn.Module):
-    def __init__(self):  
+    def __init__(self, input_size):  
         super(Autoencoder, self).__init__()
+        self.input_size = input_size
 
         self.encoder = nn.Sequential(
-            nn.Linear(13492, 4096),
+            nn.Linear(self.input_size, 4096),
             nn.GELU(),
             nn.Linear(4096, 2048),
             nn.GELU(),
@@ -22,7 +23,7 @@ class Autoencoder(nn.Module):
             nn.GELU(),
             nn.Linear(2048, 4096),
             nn.GELU(),
-            nn.Linear(4096, 13492),
+            nn.Linear(4096, self.input_size),
         )
         
     def forward(self, x):

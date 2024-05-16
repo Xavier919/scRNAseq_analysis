@@ -115,7 +115,7 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
-    base_net = Autoencoder().to(rank)
+    base_net = Autoencoder(X_train.shape[-1]).to(rank)
     #base_net = DeepKAN(X_train.shape[-1], [256,32,256,X_train.shape[-1]]).to(rank)
     base_net = DDP(base_net, device_ids=[rank])
 
