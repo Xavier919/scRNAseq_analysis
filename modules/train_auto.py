@@ -95,7 +95,6 @@ if __name__ == "__main__":
             loss = criterion(output, img)
             optimizer.zero_grad()
             loss.backward()
-            print(loss.item())
             optimizer.step()
             total_loss += loss.item()
             num_batches += 1
