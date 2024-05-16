@@ -10,6 +10,8 @@ import pickle
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 import anndata
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from scipy.sparse import csr_matrix
 
 
 writer = SummaryWriter()
@@ -20,7 +22,7 @@ def sample_cells(path, label, num_samples=-1):
     df = anndata_object.to_df()
     if num_samples > 0 and len(df) > num_samples:
         df = df.sample(n=num_samples, replace=False)
-    df['label'] = label
+    #df['label'] = label
     return df
 
 def build_dataset(df1, df2, df3, df4):
@@ -34,6 +36,37 @@ def build_dataset(df1, df2, df3, df4):
     # Concatenate all dataframes
     df = pd.concat([df1, df2, df3, df4], ignore_index=True)
     return df
+
+def merge_dataframes(sc_file_path, anno_file_path):
+    # Use anndata package to read file
+    adata = anndata.read_h5ad(sc_file_path)
+    # Check if the data is a sparse matrix and convert to dense format
+    if isinstance(adata.X, csr_matrix):
+        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
+    else:
+        sc_df = adata.to_df()
+    # Set the index name to 'cell_id'
+    sc_df.index.name = 'cell_id'
+    # Convert index to string
+    sc_df.index = sc_df.index.astype(str)
+    # Drop columns starting with 'mt-'
+    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
+    # Iterate through each column and remove columns with fewer than 100 non-zero values
+    non_zero_counts = sc_df.astype(bool).sum(axis=0)
+    sc_df = sc_df.loc[:, non_zero_counts >= 100]
+    # Keep only 1000 samples
+    sc_df = sc_df.sample(n=5000)
+    # Read the file, skipping the first 4 lines
+    anno_df = pd.read_csv(anno_file_path, skiprows=4)
+    # Set 'cell_id' as the index and keep only the 'class label' column
+    anno_df = anno_df.set_index('cell_id')[['class_label']]
+    # Convert index to string
+    anno_df.index = anno_df.index.astype(str)
+    # Fit and transform the 'class label' column
+    anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
+    # Merge dataframes on indexes
+    merged_df = sc_df.join(anno_df)
+    return merged_df
 
 def euclid_dis(vects):
     x, y = vects
@@ -62,7 +95,6 @@ def train_epoch(model, dataloader, optimizer, device, epoch):
         optimizer.zero_grad()
         output = model(data_a, data_b)  
         loss = contrastive_loss(target, output)
-        print(loss.item())
         loss.backward()
         optimizer.step()
         total_loss += loss.item()

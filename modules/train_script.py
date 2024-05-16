@@ -7,14 +7,9 @@ import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 import numpy as np
-import os
 from modules.mlp_model import MLP, SiameseMLP
 from modules.kan_model import DeepKAN, SiameseKAN
-import anndata
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from scipy.sparse import csr_matrix
-import scanpy as sc
 
 
 parser = argparse.ArgumentParser()
@@ -28,54 +23,6 @@ parser.add_argument("tag", type=str)
 parser.add_argument('-h_layers', nargs="+", type=int)
 args = parser.parse_args()
 
-
-def merge_dataframes(sc_file_path, anno_file_path):
-    # Use anndata package to read file
-    adata = anndata.read_h5ad(sc_file_path)
-
-    # Check if the data is a sparse matrix and convert to dense format
-    if isinstance(adata.X, csr_matrix):
-        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
-    else:
-        sc_df = adata.to_df()
-
-    # Set the index name to 'cell_id'
-    sc_df.index.name = 'cell_id'
-
-    # Convert index to string
-    sc_df.index = sc_df.index.astype(str)
-
-    # Drop columns starting with 'mt-'
-    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
-
-    # Iterate through each column and remove columns with fewer than 100 non-zero values
-    non_zero_counts = sc_df.astype(bool).sum(axis=0)
-    sc_df = sc_df.loc[:, non_zero_counts >= 100]
-
-    # Add 1 to all elements in the matrix
-    sc_df = sc_df + 1
-
-    # Normalize and scale each row
-    scaler = StandardScaler(with_mean=False)
-    sc_df = pd.DataFrame(scaler.fit_transform(sc_df.T).T, index=sc_df.index, columns=sc_df.columns)
-
-    # Read the file, skipping the first 4 lines
-    anno_df = pd.read_csv(anno_file_path, skiprows=4)
-
-    # Set 'cell_id' as the index and keep only the 'class label' column
-    anno_df = anno_df.set_index('cell_id')[['class_label']]
-
-    # Convert index to string
-    anno_df.index = anno_df.index.astype(str)
-
-    # Fit and transform the 'class label' column
-    anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
-
-    # Merge dataframes on indexes
-    merged_df = sc_df.join(anno_df)
-
-    print(merged_df.head())
-    return merged_df
 
 if __name__ == "__main__":
 

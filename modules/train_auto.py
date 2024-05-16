@@ -13,10 +13,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from modules.kan_model import DeepKAN
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from scipy.sparse import csr_matrix
-import anndata
-import scanpy as sc
 from tqdm import tqdm
 
 
@@ -37,53 +33,6 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def merge_dataframes(sc_file_path, anno_file_path):
-    # Use anndata package to read file
-    adata = anndata.read_h5ad(sc_file_path)
-
-    # Check if the data is a sparse matrix and convert to dense format
-    if isinstance(adata.X, csr_matrix):
-        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
-    else:
-        sc_df = adata.to_df()
-
-    # Set the index name to 'cell_id'
-    sc_df.index.name = 'cell_id'
-
-    # Convert index to string
-    sc_df.index = sc_df.index.astype(str)
-
-    # Drop columns starting with 'mt-'
-    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
-
-    # Iterate through each column and remove columns with fewer than 100 non-zero values
-    non_zero_counts = sc_df.astype(bool).sum(axis=0)
-    sc_df = sc_df.loc[:, non_zero_counts >= 100]
-
-    # Add 1 to all elements in the matrix
-    sc_df = sc_df + 1
-
-    # Normalize and scale each row
-    scaler = StandardScaler(with_mean=False)
-    sc_df = pd.DataFrame(scaler.fit_transform(sc_df.T).T, index=sc_df.index, columns=sc_df.columns)
-
-    # Read the file, skipping the first 4 lines
-    anno_df = pd.read_csv(anno_file_path, skiprows=4)
-
-    # Set 'cell_id' as the index and keep only the 'class label' column
-    anno_df = anno_df.set_index('cell_id')[['class_label']]
-
-    # Convert index to string
-    anno_df.index = anno_df.index.astype(str)
-
-    # Fit and transform the 'class label' column
-    anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
-
-    # Merge dataframes on indexes
-    merged_df = sc_df.join(anno_df)
-
-    print(merged_df.head())
-    return merged_df
 
 writer = SummaryWriter()
 test_writer = SummaryWriter()
@@ -93,12 +42,14 @@ if __name__ == "__main__":
     rank = int(os.getenv('OMPI_COMM_WORLD_RANK', '0'))
     setup(rank, world_size)
 
-    dfA = merge_dataframes('sc_alz/data/A_count.h5ad', 'sc_alz/data/A_mapping.csv')
-    dfB = merge_dataframes('sc_alz/data/B_count.h5ad', 'sc_alz/data/B_mapping.csv')
-    dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
-    dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
+    #dfA = merge_dataframes('sc_alz/data/A_count.h5ad', 'sc_alz/data/A_mapping.csv')
+    #dfB = merge_dataframes('sc_alz/data/B_count.h5ad', 'sc_alz/data/B_mapping.csv')
+    #dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
+    #dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
 
-    merged_df = pd.concat([dfA, dfB, dfC, dfD], ignore_index=True)
+    merged_df = merge_dataframes('sc_alz/data/fede_count.h5ad', 'sc_alz/data/fede_mapping.csv')
+
+    #merged_df = pd.concat([dfA, dfB, dfC, dfD], ignore_index=True)
 
     X = merged_df.drop('class_label', axis=1).values
 
