@@ -52,6 +52,9 @@ def merge_dataframes(sc_file_path, anno_file_path):
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
 
+    # Add 1 to all elements in the matrix
+    sc_df = sc_df + 1
+
     # Normalize and scale each row
     scaler = StandardScaler(with_mean=False)
     sc_df = pd.DataFrame(scaler.fit_transform(sc_df.T).T, index=sc_df.index, columns=sc_df.columns)
