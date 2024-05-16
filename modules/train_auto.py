@@ -13,10 +13,11 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from modules.kan_model import DeepKAN
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from scipy.sparse import csr_matrix
 import anndata
 import scanpy as sc
+from tqdm import tqdm
 
 
 parser = argparse.ArgumentParser()
@@ -58,6 +59,10 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Iterate through each column and remove columns with fewer than 10 non-zero values
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
+
+    # Normalize and scale each row
+    scaler = StandardScaler()
+    sc_df = pd.DataFrame(scaler.fit_transform(sc_df.T).T, index=sc_df.index, columns=sc_df.columns)
 
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
@@ -110,8 +115,8 @@ if __name__ == "__main__":
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, sampler=test_sampler)
 
-    #base_net = Autoencoder().to(rank)
-    base_net = DeepKAN(X_train.shape[-1], [256,32,256,X_train.shape[-1]]).to(rank)
+    base_net = Autoencoder().to(rank)
+    #base_net = DeepKAN(X_train.shape[-1], [256,32,256,X_train.shape[-1]]).to(rank)
     base_net = DDP(base_net, device_ids=[rank])
 
     criterion = nn.MSELoss()
@@ -129,7 +134,7 @@ if __name__ == "__main__":
         total_loss = 0
         num_batches = 0
         
-        for data in train_loader:
+        for data in tqdm(train_loader):
             img, = data
             img = img.to(device)
             output = base_net(img)
@@ -147,7 +152,7 @@ if __name__ == "__main__":
         test_loss = 0
         num_batches = 0
         with torch.no_grad():
-            for data in test_loader:
+            for data in tqdm(test_loader):
                 img, = data
                 img = img.to(device)
                 output = base_net(img)
