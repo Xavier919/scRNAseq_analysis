@@ -65,3 +65,5 @@ if __name__ == "__main__":
 
         results = (outputs, targets)
         pickle.dump(results, open(f'embed_{args.tag}_{split}.pkl', 'wb'))
+
+        get_umap(X_test, Y_test, args.tag)

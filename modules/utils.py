@@ -1,18 +1,18 @@
 import pandas as pd
 import numpy as np
-import random
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
 from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score
-import io
-import pickle
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 import anndata
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from scipy.sparse import csr_matrix
-
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from umap import UMAP
 
 writer = SummaryWriter()
 test_writer = SummaryWriter()
@@ -110,21 +110,6 @@ def eval_model(model, dataloader, device, epoch):
 
     return total_accuracy / total_samples
 
-
-def evaluate(Y_test, y_pred):
-    print("Precision: ",precision_score(Y_test, y_pred, average="weighted", zero_division=0)),
-    print("Recall: ", recall_score(Y_test, y_pred, average="weighted", zero_division=0))
-    print("F1_score: ", f1_score(Y_test, y_pred, average="weighted", zero_division=0))
-    print("accuracy: ", accuracy_score(Y_test, y_pred))
-
-class CPU_Unpickler(pickle.Unpickler):
-    def find_class(self, module, name):
-        if module == 'torch.storage' and name == '_load_from_bytes':
-            return lambda b: torch.load(io.BytesIO(b), map_location='cpu')
-        else:
-            return super().find_class(module, name)
-        
-
 def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
     splits = list(kf.split(X))  
@@ -134,3 +119,27 @@ def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     Y_train, Y_test = Y[train_index], Y[test_index]
     
     return X_train, X_test, Y_train, Y_test
+
+def get_umap(X, Y, tag):
+    scaler = StandardScaler()
+    scaled_outputs = scaler.fit_transform(X)
+
+    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
+    embedding = reducer.fit_transform(scaled_outputs)
+
+    plt.figure(figsize=(10, 8))
+
+    unique_targets = np.unique(Y)
+    colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
+
+    for target, color in zip(unique_targets, colors):
+        indices = np.where(Y == target)
+        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=f'Target {target}', s=0.1)
+
+    plt.title('UMAP - 2D projection of learned embedding')
+    plt.xlabel('UMAP 1')
+    plt.ylabel('UMAP 2')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f'umap_{tag}.png')
+    plt.show()
