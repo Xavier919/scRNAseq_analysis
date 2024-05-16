@@ -17,14 +17,6 @@ from scipy.sparse import csr_matrix
 writer = SummaryWriter()
 test_writer = SummaryWriter()
 
-def sample_cells(path, label, num_samples=-1):
-    anndata_object = anndata.read_h5ad(path)
-    df = anndata_object.to_df()
-    if num_samples > 0 and len(df) > num_samples:
-        df = df.sample(n=num_samples, replace=False)
-    #df['label'] = label
-    return df
-
 def build_dataset(df1, df2, df3, df4):
     # Find common columns among all dataframes
     common_columns = df1.columns.intersection(df2.columns).intersection(df3.columns).intersection(df4.columns)
@@ -55,7 +47,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
     # Keep only 1000 samples
-    sc_df = sc_df.sample(n=5000)
+    #sc_df = sc_df.sample(n=5000)
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
     # Set 'cell_id' as the index and keep only the 'class label' column
