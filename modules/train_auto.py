@@ -41,9 +41,9 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
 
-    # Check if the data is a sparse matrix and convert to dataframe
+    # Check if the data is a sparse matrix and convert to dense format
     if isinstance(adata.X, csr_matrix):
-        sc_df = pd.DataFrame.sparse.from_spmatrix(adata.X, index=adata.obs_names, columns=adata.var_names)
+        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
     else:
         sc_df = adata.to_df()
 
@@ -56,7 +56,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Drop columns starting with 'mt-'
     sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
 
-    # Iterate through each column and remove columns with fewer than 10 non-zero values
+    # Iterate through each column and remove columns with fewer than 100 non-zero values
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
 
