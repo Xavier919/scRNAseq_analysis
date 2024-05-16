@@ -61,7 +61,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
 
     # Normalize and scale each row
-    scaler = StandardScaler()
+    scaler = StandardScaler(with_mean=False)
     sc_df = pd.DataFrame(scaler.fit_transform(sc_df.T).T, index=sc_df.index, columns=sc_df.columns)
 
     # Read the file, skipping the first 4 lines
