@@ -47,7 +47,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 100]
     # Keep only 1000 samples
-    #sc_df = sc_df.sample(n=5000)
+    sc_df = sc_df.sample(n=500)
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
     # Set 'cell_id' as the index and keep only the 'class label' column
