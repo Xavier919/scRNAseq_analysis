@@ -62,6 +62,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch):
         optimizer.zero_grad()
         output = model(data_a, data_b)  
         loss = contrastive_loss(target, output)
+        print(loss.item())
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
