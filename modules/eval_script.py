@@ -24,8 +24,8 @@ if __name__ == "__main__":
 
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
-    X = merged_df.drop('class_label', axis=1).values
-    Y = merged_df['class_label'].values
+    X = merged_df.drop('class_name', axis=1).values
+    Y = merged_df['class_name'].values
 
     for split in range(4):
 
