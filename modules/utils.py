@@ -18,30 +18,33 @@ import scanpy as sc
 writer = SummaryWriter()
 test_writer = SummaryWriter()
 
-def build_dataset(df1, df2, df3, df4):
+
+def build_dataset(*dfs):
+    # Ensure there's at least one dataframe
+    if not dfs:
+        raise ValueError("At least one dataframe must be provided")
     # Find common columns among all dataframes
-    common_columns = df1.columns.intersection(df2.columns).intersection(df3.columns).intersection(df4.columns)
+    common_columns = dfs[0].columns
+    for df in dfs[1:]:
+        common_columns = common_columns.intersection(df.columns)
     # Select only the common columns from each dataframe
-    df1 = df1[common_columns]
-    df2 = df2[common_columns]
-    df3 = df3[common_columns]
-    df4 = df4[common_columns]
+    dfs = [df[common_columns] for df in dfs]
     # Concatenate all dataframes
-    df = pd.concat([df1, df2, df3, df4], ignore_index=True)
-    return df
+    result_df = pd.concat(dfs, ignore_index=True)
+    return result_df
 
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
     
     # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
+    #sc.pp.normalize_total(adata, target_sum=1e4)
     
     # Logarithmize the data
-    sc.pp.log1p(adata)
+    #sc.pp.log1p(adata)
     
     # Scale the data
-    sc.pp.scale(adata, max_value=10)
+    #sc.pp.scale(adata, max_value=10)
     
     # Check if the data is a sparse matrix and convert to dense format
     if isinstance(adata.X, csr_matrix):
@@ -64,18 +67,23 @@ def merge_dataframes(sc_file_path, anno_file_path):
     
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
+
+    # Split the 'class_label' column on the first space
+    anno_df['class_number'], anno_df['class_name'] = anno_df['class_label'].str.split(' ', 1).str
+
+    # Convert 'class_number' to integer
+    anno_df['class_number'] = anno_df['class_number'].astype(int)
     
     # Set 'cell_id' as the index and keep only the 'class label' column
-    anno_df = anno_df.set_index('cell_id')[['class_label']]
-    
+    anno_df = anno_df.set_index('cell_id')[['class_number', 'class_name']]
+
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
     
-    # Fit and transform the 'class label' column
-    anno_df['class_label'] = LabelEncoder().fit_transform(anno_df['class_label'])
-    
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
+
+    print(merged_df.head())
     
     return merged_df
 
@@ -143,7 +151,7 @@ def get_umap(X, Y, tag):
     scaler = StandardScaler()
     scaled_outputs = scaler.fit_transform(X)
 
-    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
+    reducer = UMAP(n_neighbors=100, n_components=2)
     embedding = reducer.fit_transform(scaled_outputs)
 
     plt.figure(figsize=(10, 8))
