@@ -18,6 +18,43 @@ import scanpy as sc
 writer = SummaryWriter()
 test_writer = SummaryWriter()
 
+mapping = {
+ '01 IT-ET Glut': 1,
+ '02 NP-CT-L6b Glut': 2,
+ '03 OB-CR Glut': 3,
+ '04 DG-IMN Glut': 4,
+ '05 OB-IMN GABA': 5,
+ '06 CTX-CGE GABA': 6,
+ '07 CTX-MGE GABA': 7,
+ '08 CNU-MGE GABA': 8,
+ '09 CNU-LGE GABA': 9,
+ '10 LSX GABA': 10,
+ '11 CNU-HYa GABA': 11,
+ '12 HY GABA': 12,
+ '13 CNU-HYa Glut': 13,
+ '14 HY Glut': 14,
+ '15 HY Gnrh1 Glut': 15,
+ '16 HY MM Glut': 16,
+ '17 MH-LH Glut': 17,
+ '18 TH Glut': 18,
+ '19 MB Glut': 19,
+ '20 MB GABA': 20,
+ '21 MB Dopa': 21,
+ '22 MB-HB Sero': 22,
+ '23 P Glut': 23,
+ '24 MY Glut': 24,
+ '25 Pineal Glut': 25,
+ '26 P GABA': 26,
+ '27 MY GABA': 27,
+ '28 CB GABA': 28,
+ '29 CB Glut': 29,
+ '30 Astro-Epen': 30,
+ '31 OPC-Oligo': 31,
+ '32 OEC': 32,
+ '33 Vascular': 33,
+ '34 Immune': 34
+}
+
 
 def build_dataset(*dfs):
     # Ensure there's at least one dataframe
@@ -38,13 +75,13 @@ def merge_dataframes(sc_file_path, anno_file_path):
     adata = anndata.read_h5ad(sc_file_path)
     
     # Normalize the data
-    #sc.pp.normalize_total(adata, target_sum=1e4)
+    # sc.pp.normalize_total(adata, target_sum=1e4)
     
     # Logarithmize the data
-    #sc.pp.log1p(adata)
+    # sc.pp.log1p(adata)
     
     # Scale the data
-    #sc.pp.scale(adata, max_value=10)
+    # sc.pp.scale(adata, max_value=10)
     
     # Check if the data is a sparse matrix and convert to dense format
     if isinstance(adata.X, csr_matrix):
@@ -57,34 +94,29 @@ def merge_dataframes(sc_file_path, anno_file_path):
     
     # Convert index to string
     sc_df.index = sc_df.index.astype(str)
-    
-    # Drop columns starting with 'mt-'
-    #sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
-    
+        
     # Iterate through each column and remove columns with fewer than 10 non-zero values
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 10]
-    
+
+    # Drop columns starting with 'mt-'
+    sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
+
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
 
-    # Split the 'class_label' column on the first space
-    anno_df['class_number'], anno_df['class_name'] = anno_df['class_label'].str.split(' ', 1).str
-
-    # Convert 'class_number' to integer
-    anno_df['class_number'] = anno_df['class_number'].astype(int)
-    
-    # Set 'cell_id' as the index and keep only the 'class label' column
-    anno_df = anno_df.set_index('cell_id')[['class_number', 'class_name']]
+    # Set 'cell_id' as the index and keep only the 'class name' column
+    anno_df = anno_df.set_index('cell_id')[['class_name']]
 
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
-    
+
+    # Fit and transform the 'class label' column
+    #anno_df['class_name'] = LabelEncoder().fit_transform(anno_df['class_name'])
+
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
 
-    print(merged_df.head())
-    
     return merged_df
 
 def euclid_dis(vects):
