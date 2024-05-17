@@ -180,11 +180,8 @@ def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     return X_train, X_test, Y_train, Y_test
 
 def get_umap(X, Y, tag):
-    scaler = StandardScaler()
-    scaled_outputs = scaler.fit_transform(X)
-
     reducer = UMAP(n_neighbors=100, n_components=2)
-    embedding = reducer.fit_transform(scaled_outputs)
+    embedding = reducer.fit_transform(X)
 
     plt.figure(figsize=(10, 8))
 
@@ -193,7 +190,7 @@ def get_umap(X, Y, tag):
 
     for target, color in zip(unique_targets, colors):
         indices = np.where(Y == target)
-        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=f'Target {target}', s=0.1)
+        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=target, s=0.1)
 
     plt.title('UMAP - 2D projection of learned embedding')
     plt.xlabel('UMAP 1')
