@@ -20,8 +20,6 @@ if __name__ == "__main__":
     dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
     dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
 
-    #merged_df = merge_dataframes('sc_alz/data/fede_count.h5ad', 'sc_alz/data/fede_mapping.csv')
-
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
     X = merged_df.drop('class_name', axis=1).values
@@ -34,7 +32,7 @@ if __name__ == "__main__":
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         test_data = torch.Tensor(X_test)
-        test_labels = Y_test
+        test_labels = torch.Tensor(Y_test)
         test_dataset = TensorDataset(test_data, test_labels)
         test_loader = DataLoader(test_dataset, batch_size=1)
 

@@ -31,8 +31,6 @@ if __name__ == "__main__":
     dfC = merge_dataframes('sc_alz/data/C_count.h5ad', 'sc_alz/data/C_mapping.csv')
     dfD = merge_dataframes('sc_alz/data/D_count.h5ad', 'sc_alz/data/D_mapping.csv')
 
-    #merged_df = merge_dataframes('sc_alz/data/fede_count.h5ad', 'sc_alz/data/fede_mapping.csv')
-
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
     X = merged_df.drop('class_name', axis=1).values

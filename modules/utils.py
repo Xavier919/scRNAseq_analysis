@@ -55,33 +55,18 @@ mapping = {
  '34 Immune': 34
 }
 
-
-def build_dataset(*dfs):
-    # Ensure there's at least one dataframe
-    if not dfs:
-        raise ValueError("At least one dataframe must be provided")
-    # Find common columns among all dataframes
-    common_columns = dfs[0].columns
-    for df in dfs[1:]:
-        common_columns = common_columns.intersection(df.columns)
-    # Select only the common columns from each dataframe
-    dfs = [df[common_columns] for df in dfs]
-    # Concatenate all dataframes
-    result_df = pd.concat(dfs, ignore_index=True)
-    return result_df
-
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
     
     # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
+    #sc.pp.normalize_total(adata, target_sum=1e4)
     
     # Logarithmize the data
-    sc.pp.log1p(adata)
+    #sc.pp.log1p(adata)
     
     # Scale the data
-    sc.pp.scale(adata, max_value=10)
+    #sc.pp.scale(adata, max_value=10)
     
     # Check if the data is a sparse matrix and convert to dense format
     if isinstance(adata.X, csr_matrix):
@@ -99,9 +84,6 @@ def merge_dataframes(sc_file_path, anno_file_path):
     non_zero_counts = sc_df.astype(bool).sum(axis=0)
     sc_df = sc_df.loc[:, non_zero_counts >= 10]
 
-    # Drop columns starting with 'mt-'
-    #sc_df = sc_df.drop(columns=sc_df.filter(like='mt-', axis=1).columns)
-
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
 
@@ -111,13 +93,30 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
 
-    # Fit and transform the 'class label' column
-    #anno_df['class_name'] = LabelEncoder().fit_transform(anno_df['class_name'])
+    # Convert 'class_name' using the mapping
+    anno_df['class_name'] = anno_df['class_name'].map(mapping)
 
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
 
+    print(merged_df.head())
+
     return merged_df
+
+
+def build_dataset(*dfs):
+    # Ensure there's at least one dataframe
+    if not dfs:
+        raise ValueError("At least one dataframe must be provided")
+    # Find common columns among all dataframes
+    common_columns = dfs[0].columns
+    for df in dfs[1:]:
+        common_columns = common_columns.intersection(df.columns)
+    # Select only the common columns from each dataframe
+    dfs = [df[common_columns] for df in dfs]
+    # Concatenate all dataframes
+    result_df = pd.concat(dfs, ignore_index=True)
+    return result_df
 
 def euclid_dis(vects):
     x, y = vects
