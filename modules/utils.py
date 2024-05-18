@@ -178,6 +178,8 @@ def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     
     return X_train, X_test, Y_train, Y_test
 
+from matplotlib.lines import Line2D
+
 def get_umap(X, Y, tag, mapping):
     mapping = {y:x for x,y in mapping.items()}
     reducer = UMAP(n_neighbors=100, n_components=2)
@@ -187,15 +189,21 @@ def get_umap(X, Y, tag, mapping):
 
     unique_targets = np.unique(Y)
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
+    markersize_scatter = 0.1  # Size of dots in the scatter plot
+    markersize_legend = 10  # Size of dots in the legend
 
     for target, color in zip(unique_targets, colors):
         indices = np.where(Y == target)
-        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=mapping[target], s=0.1)
+        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=mapping[target], s=markersize_scatter)
 
     plt.title('UMAP - 2D projection of learned embedding')
     plt.xlabel('UMAP 1')
     plt.ylabel('UMAP 2')
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+    handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=markersize_legend, label=mapping[target])
+               for target, color in zip(unique_targets, colors)]
+    
+    plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
     plt.savefig(f'umap_{tag}.png', bbox_inches='tight')
     plt.show()
