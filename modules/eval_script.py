@@ -61,7 +61,7 @@ if __name__ == "__main__":
             data_X = data_X.to(device)
             output = base_net(data_X)
             outputs.append(output.detach().cpu().numpy()[0])
-            targets.append(int(data_Y.numpy()[0]))
+            targets.append(data_Y)
 
         results = (outputs, targets)
         pickle.dump(results, open(f'embed_{args.tag}_{split}.pkl', 'wb'))
