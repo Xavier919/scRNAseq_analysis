@@ -187,8 +187,8 @@ def get_umap(X, Y, tag, mapping):
 
     unique_targets = np.unique(Y)
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
-    markersize_scatter = 0.1  # Size of dots in the scatter plot
-    markersize_legend = 10  # Size of dots in the legend
+    markersize_scatter = 0.1 
+    markersize_legend = 10  
 
     for target, color in zip(unique_targets, colors):
         indices = np.where(Y == target)
