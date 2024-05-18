@@ -7,11 +7,9 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_sc
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 import anndata
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from scipy.sparse import csr_matrix
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
 from umap import UMAP
 import scanpy as sc
 from matplotlib.lines import Line2D
