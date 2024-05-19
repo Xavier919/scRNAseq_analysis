@@ -25,6 +25,9 @@ if __name__ == "__main__":
     X = merged_df.drop('class_name', axis=1).values
     Y = merged_df['class_name'].values
 
+    column_names = merged_df.columns.tolist()
+
+
     for split in range(4):
 
         X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=42)
@@ -65,3 +68,7 @@ if __name__ == "__main__":
         pickle.dump(results, open(f'embed_{args.tag}_{split}.pkl', 'wb'))
 
         get_umap(np.stack(outputs), targets, args.tag, mapping)
+
+        shap_val = get_shap_values(base_net, X)
+
+        plot_SHAP(shap_val, X, column_names)

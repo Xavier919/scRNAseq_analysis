@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from umap import UMAP
 import scanpy as sc
 from matplotlib.lines import Line2D
+import shap
 
 writer = SummaryWriter()
 test_writer = SummaryWriter()
@@ -187,3 +188,32 @@ def get_umap(X, Y, tag, mapping):
     plt.grid(True)
     plt.savefig(f'umap_{tag}.png', bbox_inches='tight')
     plt.show()
+
+def get_shap_values(model, X, bg_size=100, n_instances=1000):
+    """ Calculate the shap value for a given model and dataset. """
+
+    np.random.seed(1)
+    background = shap.kmeans(X, bg_size)  # Background data for SHAP calculations
+    explainer = shap.KernelExplainer(model.predict, background)
+
+    if n_instances == -1:  # Use all instances
+        X_shap = X
+    else:
+        # Randomly select n_instances
+        X_shap = X[np.random.randint(0, high=X.shape[0], size=n_instances)]
+
+    return explainer.shap_values(X_shap)
+
+
+def plot_SHAP(SHAP_values, X, feature_names, n_features=20, save_path=None):
+    """ Plot the shap values for a given dataset. """
+
+    # Plot the shap values
+    shap.summary_plot(SHAP_values, X, feature_names=feature_names,
+                      show=False, max_display=n_features)
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
