@@ -71,4 +71,4 @@ if __name__ == "__main__":
 
         shap_val = get_shap_values(base_net, X)
 
-        plot_SHAP(shap_val, X, column_names)
+        plot_SHAP(shap_val, X, column_names, save_path=f'shap_{args.tag}_split.png')
