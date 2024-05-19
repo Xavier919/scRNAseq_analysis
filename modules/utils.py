@@ -72,9 +72,6 @@ def merge_dataframes(sc_file_path, anno_file_path):
     sc_df.index.name = 'cell_id'
     # Convert index to string
     sc_df.index = sc_df.index.astype(str)
-    # Iterate through each column and remove columns with fewer than 10 non-zero values
-    non_zero_counts = sc_df.astype(bool).sum(axis=0)
-    sc_df = sc_df.loc[:, non_zero_counts >= 10]
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
     # Set 'cell_id' as the index and keep only the 'class name' column
