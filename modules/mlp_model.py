@@ -47,15 +47,19 @@ class MLP(nn.Module):
             nn.GELU(),
             nn.Linear(512, 128),
         )
-        self.dual = nn.Sequential(
+        self.dual1 = nn.Sequential(
+            nn.Linear(128, 32),
+            nn.GELU(),
+        )
+        self.dual2 = nn.Sequential(
             nn.Linear(128, 32),
             nn.GELU(),
         )
         
     def forward(self, x):
         x = self.encoder(x)
-        x1 = self.dual(x)
-        x2 = self.dual(x)
+        x1 = self.dual1(x)
+        x2 = self.dual2(x)
         return x1, x2
     
 class SiameseMLP(nn.Module):
