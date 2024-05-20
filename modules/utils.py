@@ -100,6 +100,29 @@ def build_dataset(*dfs):
     result_df = pd.concat(dfs, ignore_index=True)
     return result_df
 
+def build_dataset(*dfs):
+    # Ensure there's at least one dataframe
+    if not dfs:
+        raise ValueError("At least one dataframe must be provided")
+    
+    # Find common columns among all dataframes
+    common_columns = set(dfs[0].columns)
+    for df in dfs[1:]:
+        common_columns &= set(df.columns)
+    common_columns = list(common_columns)
+    
+    # Select only the common columns from each dataframe and add phenotype column
+    processed_dfs = []
+    for i, df in enumerate(dfs):
+        df_common = df[common_columns].copy()
+        df_common['phenotype'] = i
+        processed_dfs.append(df_common)
+    
+    # Concatenate all dataframes
+    result_df = pd.concat(processed_dfs, ignore_index=True)
+    return result_df
+
+
 def euclid_dis(vects):
     x, y = vects
     x_flat = x.view(x.size(0), -1)  
@@ -133,6 +156,35 @@ def train_epoch(model, dataloader, optimizer, device, epoch):
         writer.add_scalar("Loss/train", loss.item(), epoch)
     return total_loss / len(dataloader)
 
+def train_epoch(model, dataloader, optimizer, device, epoch):
+    model.train()
+    total_loss1 = 0
+    total_loss2 = 0
+    for (data_a, data_b), target1, target2 in tqdm(dataloader):
+        data_a, data_b = data_a.to(device), data_b.to(device)
+        target1, target2 = target1.to(device), target2.to(device)
+        optimizer.zero_grad()
+        output1, output2 = model(data_a, data_b)
+        
+        # Compute losses for both outputs
+        loss1 = contrastive_loss(target1, output1)
+        loss2 = contrastive_loss(target2, output2)
+        loss = (loss1 + loss2) / 2
+        
+        loss.backward()
+        optimizer.step()
+        
+        total_loss1 += loss1.item()
+        total_loss2 += loss2.item()
+        
+        writer.add_scalar("Loss/train_loss1", loss1.item(), epoch)
+        writer.add_scalar("Loss/train_loss2", loss2.item(), epoch)
+        
+    avg_loss1 = total_loss1 / len(dataloader)
+    avg_loss2 = total_loss2 / len(dataloader)
+    return avg_loss1, avg_loss2
+
+
 def eval_model(model, dataloader, device, epoch):
     model.eval()
     total_accuracy = 0
@@ -149,6 +201,35 @@ def eval_model(model, dataloader, device, epoch):
             total_samples += data_a.size(0)
 
     return total_accuracy / total_samples
+
+def eval_model(model, dataloader, device, epoch):
+    model.eval()
+    total_accuracy1 = 0
+    total_accuracy2 = 0
+    total_samples = 0
+
+    with torch.no_grad():
+        for (data_a, data_b), target1, target2 in dataloader:
+            data_a, data_b = data_a.to(device), data_b.to(device)
+            target1, target2 = target1.to(device), target2.to(device)
+            output1, output2 = model(data_a, data_b)
+            
+            loss1 = contrastive_loss(target1, output1)
+            loss2 = contrastive_loss(target2, output2)
+            test_writer.add_scalar("Loss/test_loss1", loss1.item(), epoch)
+            test_writer.add_scalar("Loss/test_loss2", loss2.item(), epoch)
+            
+            accuracy1 = calculate_accuracy(output1, target1)
+            accuracy2 = calculate_accuracy(output2, target2)
+            
+            total_accuracy1 += accuracy1.item() * data_a.size(0)
+            total_accuracy2 += accuracy2.item() * data_a.size(0)
+            total_samples += data_a.size(0)
+    
+    avg_accuracy1 = total_accuracy1 / total_samples
+    avg_accuracy2 = total_accuracy2 / total_samples
+    return avg_accuracy1, avg_accuracy2
+
 
 def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
@@ -217,3 +298,32 @@ def plot_SHAP(SHAP_values, X, feature_names, n_features=20, save_path=None):
         plt.close()
     else:
         plt.show()
+
+def plot_knots(layer):
+    for i in range(layer.input_dim):
+        plt.figure(figsize=(10, 2))
+        plt.plot(layer.knots[i].cpu().numpy(), label=f'Dimension {i+1}')
+        plt.title(f'Knots for Input Dimension {i+1}')
+        plt.xlabel('Knot Index')
+        plt.ylabel('Knot Position')
+        plt.legend()
+        plt.show()
+
+def plot_splines(layer, input_dim_idx, output_dim_idx, num_points=10):
+    # Ensure num_points is within a reasonable range
+    num_points = min(num_points, 100)  # Limit to a maximum of 1000 points
+    # Generate x values and compute B-spline bases
+    x = torch.linspace(layer.grid_range[0], layer.grid_range[1], num_points)
+    bases = layer._compute_b_splines(x.unsqueeze(1)).squeeze(1)
+    weights = layer._scaled_spline_weights[output_dim_idx, input_dim_idx].detach().numpy()
+    # Compute spline values
+    spline_values = bases @ weights
+    # Plot the spline
+    plt.figure(figsize=(10, 4))
+    plt.plot(x.numpy(), spline_values.numpy(),
+             label=f'Spline for Input Dim {input_dim_idx + 1} to Output Dim {output_dim_idx + 1}')
+    plt.title(f'Spline Transformation from Input Dim {input_dim_idx + 1} to Output Dim {output_dim_idx + 1}')
+    plt.xlabel('Input Value')
+    plt.ylabel('Spline Output')
+    #plt.legend()
+    plt.show()

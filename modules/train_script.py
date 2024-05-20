@@ -33,19 +33,30 @@ if __name__ == "__main__":
 
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
-    X = merged_df.drop('class_name', axis=1).values
+    X = merged_df.drop(['class_name', 'phenotype'], axis=1).values
+    Y1 = merged_df['class_name'].values
+    Y2 = merged_df['phenotype'].values
 
-    Y = merged_df['class_name'].values
+    # Step 2: Split the data
+    X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = train_test_split(X, Y1, Y2, test_size=args.split, random_state=42, stratify=Y1)
 
-    X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
-
+    # Step 3: Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = PairedDataset(X_train, Y_train, args.num_pairs)
+    # Step 4: Create datasets and data loaders with two types of labels
+    train_dataset = PairedDataset(X_train, (Y1_train, Y2_train), args.num_pairs)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
 
-    test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
+    test_dataset = PairedDataset(X_test, (Y1_test, Y2_test), args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
+
+    #X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
+
+    #train_dataset = PairedDataset(X_train, Y_train, args.num_pairs)
+    #train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
+
+    #test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
+    #test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
     hidden_layers = list(args.h_layers)
 
