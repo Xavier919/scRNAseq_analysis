@@ -38,25 +38,27 @@ class MLP(nn.Module):
         self.input_size = input_size
         self.encoder = nn.Sequential(
             nn.Linear(self.input_size, 4096),
-            nn.BatchNorm1d(4096),
             nn.GELU(),
             nn.Linear(4096, 2048),
-            nn.BatchNorm1d(2048),
             nn.GELU(),
-            nn.Linear(2048, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(2048, 1024),
             nn.GELU(),
-            nn.Linear(512, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(1024, 512),
             nn.GELU(),
         )
         self.dual1 = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, 128),
+            nn.GELU(),
             nn.Linear(128, 32),
-            nn.BatchNorm1d(32),
         )
         self.dual2 = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, 128),
+            nn.GELU(),
             nn.Linear(128, 32),
-            nn.BatchNorm1d(32),
         )
         
     def forward(self, x):
