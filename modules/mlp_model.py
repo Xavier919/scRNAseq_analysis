@@ -31,8 +31,6 @@ class SiameseMLP(nn.Module):
         processed_b = self.base_network(input_b)
         distance = torch.norm(processed_a - processed_b, p=2, dim=1)
         return distance
-    
-
 
 class MLP(nn.Module):
     def __init__(self, input_size):  
@@ -40,20 +38,24 @@ class MLP(nn.Module):
         self.input_size = input_size
         self.encoder = nn.Sequential(
             nn.Linear(self.input_size, 4096),
+            nn.BatchNorm1d(4096),
             nn.GELU(),
             nn.Linear(4096, 2048),
+            nn.BatchNorm1d(2048),
             nn.GELU(),
             nn.Linear(2048, 512),
+            nn.BatchNorm1d(512),
             nn.GELU(),
             nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
         )
         self.dual1 = nn.Sequential(
             nn.Linear(128, 32),
-            nn.GELU(),
+            nn.BatchNorm1d(32),
         )
         self.dual2 = nn.Sequential(
             nn.Linear(128, 32),
-            nn.GELU(),
+            nn.BatchNorm1d(32),
         )
         
     def forward(self, x):
