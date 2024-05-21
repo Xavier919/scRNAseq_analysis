@@ -90,21 +90,6 @@ def merge_dataframes(sc_file_path, anno_file_path):
     merged_df = sc_df.join(anno_df)
     return merged_df
 
-
-def build_dataset(*dfs):
-    # Ensure there's at least one dataframe
-    if not dfs:
-        raise ValueError("At least one dataframe must be provided")
-    # Find common columns among all dataframes
-    common_columns = dfs[0].columns
-    for df in dfs[1:]:
-        common_columns = common_columns.intersection(df.columns)
-    # Select only the common columns from each dataframe
-    dfs = [df[common_columns] for df in dfs]
-    # Concatenate all dataframes
-    result_df = pd.concat(dfs, ignore_index=True)
-    return result_df
-
 def build_dataset(*dfs):
     # Ensure there's at least one dataframe
     if not dfs:
@@ -127,7 +112,6 @@ def build_dataset(*dfs):
     result_df = pd.concat(processed_dfs, ignore_index=True)
     return result_df
 
-
 def euclid_dis(vects):
     x, y = vects
     x_flat = x.view(x.size(0), -1)  
@@ -146,20 +130,6 @@ def calculate_accuracy(y_pred, y_true):
     correct = (pred_labels == y_true).float()  
     accuracy = correct.mean()  
     return accuracy
-
-def train_epoch(model, dataloader, optimizer, device, epoch):
-    model.train()
-    total_loss = 0
-    for (data_a, data_b), target in tqdm(dataloader):
-        data_a, data_b, target = data_a.to(device), data_b.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data_a, data_b)  
-        loss = contrastive_loss(target, output)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-        writer.add_scalar("Loss/train", loss.item(), epoch)
-    return total_loss / len(dataloader)
 
 def train_epoch(model, dataloader, optimizer, device, epoch):
     model.train()
@@ -188,24 +158,6 @@ def train_epoch(model, dataloader, optimizer, device, epoch):
     avg_loss1 = total_loss1 / len(dataloader)
     avg_loss2 = total_loss2 / len(dataloader)
     return avg_loss1, avg_loss2
-
-
-def eval_model(model, dataloader, device, epoch):
-    model.eval()
-    total_accuracy = 0
-    total_samples = 0
-
-    with torch.no_grad():
-        for (data_a, data_b), target in dataloader:
-            data_a, data_b, target = data_a.to(device), data_b.to(device), target.to(device)
-            output = model(data_a, data_b)
-            loss = contrastive_loss(target, output)
-            test_writer.add_scalar("Loss/test", loss.item(), epoch)
-            accuracy_ = calculate_accuracy(output, target)
-            total_accuracy += accuracy_.item() * data_a.size(0)  
-            total_samples += data_a.size(0)
-
-    return total_accuracy / total_samples
 
 def eval_model(model, dataloader, device, epoch):
     model.eval()
