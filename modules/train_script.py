@@ -88,8 +88,8 @@ if __name__ == "__main__":
         val_accuracy = eval_model(siamese_model, test_loader, device, epoch)
         print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
 
-        if val_accuracy > best_accuracy:
-            best_accuracy = val_accuracy
+        if np.mean(val_accuracy) > best_accuracy:
+            best_accuracy = np.mean(val_accuracy)
             no_improvement_count = 0  
             torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}.pth')
             print("Model saved as best model")
