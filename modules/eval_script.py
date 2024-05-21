@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
 parser.add_argument("tag", type=str)
-parser.add_argument("sec_tag", type=str)
 parser.add_argument('-h_layers', nargs="+", type=int)
 
 args = parser.parse_args()
@@ -74,6 +73,6 @@ if __name__ == "__main__":
         results = (outputs, targets1, targets2)
         pickle.dump(results, open(f'embed_{args.tag}_{split}.pkl', 'wb'))
 
-        get_umap(np.stack(outputs), targets1, args.tag, args.sec_tag, mapping1)
+        get_umap(np.stack(outputs), targets1, args.tag, 'type', mapping1)
 
-        get_umap(np.stack(outputs), targets2, args.tag, args.sec_tag, mapping2)
+        get_umap(np.stack(outputs), targets2, args.tag, 'phenotype', mapping2)

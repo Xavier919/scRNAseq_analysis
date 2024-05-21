@@ -273,7 +273,7 @@ def get_umap(X, Y, tag, sec_tag, mapping):
     
     plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
-    plt.savefig(f'umap_{tag}.png', bbox_inches='tight')
+    plt.savefig(f'umap_{tag}_{sec_tag}.png', bbox_inches='tight')
     plt.show()
 
 
