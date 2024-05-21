@@ -18,7 +18,7 @@ import shap
 writer = SummaryWriter()
 test_writer = SummaryWriter()
 
-mapping = {
+mapping1 = {
  '01 IT-ET Glut': 1,
  '02 NP-CT-L6b Glut': 2,
  '03 OB-CR Glut': 3,
@@ -54,6 +54,11 @@ mapping = {
  '33 Vascular': 33,
  '34 Immune': 34
 }
+
+mapping2 = {'Pheno 0': 0,
+            'Pheno 1': 0,
+            'Pheno 2': 0,
+            'Pheno 3': 0}
 
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
@@ -243,7 +248,7 @@ def get_data_splits(X, Y, Z, split, n_splits=5, shuffle=True, random_state=None)
     return X_train, X_test, Y_train, Y_test, Z_train, Z_test
 
 
-def get_umap(X, Y, tag, mapping):
+def get_umap(X, Y, tag, sec_tag, mapping):
     mapping = {y:x for x,y in mapping.items()}
     reducer = UMAP(n_neighbors=100, n_components=2)
     embedding = reducer.fit_transform(X)
@@ -270,6 +275,7 @@ def get_umap(X, Y, tag, mapping):
     plt.grid(True)
     plt.savefig(f'umap_{tag}.png', bbox_inches='tight')
     plt.show()
+
 
 def get_shap_values(model, X, bg_size=100, n_instances=1000):
     """ Calculate the shap value for a given model and dataset. """
