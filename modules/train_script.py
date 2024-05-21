@@ -82,7 +82,8 @@ if __name__ == "__main__":
     print(f"Epochs: {args.epochs}")
     print(f"Split: {args.split}")
     print(f"Tag: {args.tag}")
-    print(f"Hidden layers: {args.h_layers}")
+    print(f"Hidden layers: {args.s_layers}")
+    print(f"Dual layers: {args.d_layers}")
 
     epochs = args.epochs
     best_accuracy = 0
