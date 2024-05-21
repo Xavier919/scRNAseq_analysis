@@ -10,7 +10,7 @@ import numpy as np
 from modules.mlp_model import MLP, SiameseMLP
 from modules.kan_model import DeepKAN, SiameseKAN
 import pandas as pd
-
+from sklearn.model_selection import train_test_split
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
