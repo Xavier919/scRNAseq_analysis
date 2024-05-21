@@ -6,6 +6,7 @@ import numpy as np
 from modules.mlp_model import MLP
 from torch.utils.data import DataLoader, TensorDataset
 from modules.kan_model import DeepKAN
+from sklearn.model_selection import train_test_split
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)

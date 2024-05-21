@@ -38,7 +38,7 @@ if __name__ == "__main__":
     Y2 = merged_df['phenotype'].values
 
     # Step 2: Split the data
-    X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = train_test_split(X, Y1, Y2, test_size=args.split, random_state=42, stratify=Y1)
+    X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = train_test_split(X, Y1, Y2, test_size=0.2, random_state=42, stratify=Y1)
 
     # Step 3: Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
