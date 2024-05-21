@@ -48,6 +48,7 @@ class MLP(nn.Module):
             nn.GELU(),
             nn.Linear(512, 128),
             nn.BatchNorm1d(128),
+            nn.GELU(),
         )
         self.dual1 = nn.Sequential(
             nn.Linear(128, 32),
