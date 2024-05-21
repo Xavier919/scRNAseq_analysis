@@ -231,15 +231,16 @@ def eval_model(model, dataloader, device, epoch):
     return avg_accuracy1, avg_accuracy2
 
 
-def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
+def get_data_splits(X, Y, Z, split, n_splits=5, shuffle=True, random_state=None):
     kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
     splits = list(kf.split(X))  
     train_index, test_index = splits[split]  
     
     X_train, X_test = X[train_index], X[test_index]
     Y_train, Y_test = Y[train_index], Y[test_index]
+    Z_train, Z_test = Z[train_index], Z[test_index]
     
-    return X_train, X_test, Y_train, Y_test
+    return X_train, X_test, Y_train, Y_test, Z_train, Z_test
 
 
 def get_umap(X, Y, tag, mapping):
