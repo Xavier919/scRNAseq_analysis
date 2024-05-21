@@ -32,41 +32,28 @@ class SiameseMLP(nn.Module):
         distance = torch.norm(processed_a - processed_b, p=2, dim=1)
         return distance
 
+
 class MLP(nn.Module):
-    def __init__(self, input_size):  
+    def __init__(self, input_size, encoder_layers, dual_layers, activation=nn.GELU):
         super(MLP, self).__init__()
-        self.input_size = input_size
-        self.encoder = nn.Sequential(
-            nn.Linear(self.input_size, 4096),
-            nn.GELU(),
-            nn.Linear(4096, 2048),
-            nn.GELU(),
-            nn.Linear(2048, 1024),
-            nn.GELU(),
-            nn.Linear(1024, 512),
-            nn.GELU(),
-        )
-        self.dual1 = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.GELU(),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Linear(128, 32),
-        )
-        self.dual2 = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.GELU(),
-            nn.Linear(256, 128),
-            nn.GELU(),
-            nn.Linear(128, 32),
-        )
+        self.encoder = self._build_layers(input_size, encoder_layers, activation)
+        self.dual1 = self._build_layers(encoder_layers[-1], dual_layers, activation)
+        self.dual2 = self._build_layers(encoder_layers[-1], dual_layers, activation)
+
+    def _build_layers(self, input_dim, layer_dims, activation):
+        layers = []
+        for output_dim in layer_dims:
+            layers.append(nn.Linear(input_dim, output_dim))
+            layers.append(activation())
+            input_dim = output_dim
+        return nn.Sequential(*layers)
         
     def forward(self, x):
         x = self.encoder(x)
         x1 = self.dual1(x)
         x2 = self.dual2(x)
         return x1, x2
-    
+
 class SiameseMLP(nn.Module):
     def __init__(self, base_network):
         super(SiameseMLP, self).__init__()

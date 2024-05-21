@@ -20,7 +20,8 @@ parser.add_argument("lr", type=float)
 parser.add_argument("num_pairs", type=int)
 parser.add_argument("split", type=int)
 parser.add_argument("tag", type=str)
-parser.add_argument('-h_layers', nargs="+", type=int)
+parser.add_argument('-s_layers', nargs="+", type=int)
+parser.add_argument('-d_layers', nargs="+", type=int)
 args = parser.parse_args()
 
 
@@ -37,40 +38,28 @@ if __name__ == "__main__":
     Y1 = merged_df['class_name'].values
     Y2 = merged_df['phenotype'].values
 
-    # Step 2: Split the data
     X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = get_data_splits(X, Y1, Y2, args.split, n_splits=5, shuffle=True, random_state=42)
 
-    # Step 3: Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Step 4: Create datasets and data loaders with two types of labels
     train_dataset = PairedDataset(X_train, (Y1_train, Y2_train), args.num_pairs)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
 
     test_dataset = PairedDataset(X_test, (Y1_test, Y2_test), args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
-    #X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
-
-    #train_dataset = PairedDataset(X_train, Y_train, args.num_pairs)
-    #train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
-
-    #test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
-    #test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
-
-    hidden_layers = list(args.h_layers)
 
     if args.tag == 'mlp':
-        base_net = MLP(X_train.shape[-1]).to(device)
+        input_dim = X_train.shape[-1]
+        shared_layers = list(args.s_layers)
+        dual_layers = list(args.d_layers)
+        base_net = MLP(input_dim, shared_layers, dual_layers, activation=nn.GELU).to(device)
         siamese_model = SiameseMLP(base_net).to(device)
 
     elif args.tag == 'kan':
-        #base_net = DeepKAN(X_train.shape[-1], hidden_layers).to(device)
-        #siamese_model = SiameseKAN(base_net).to(device)
-
         input_dim = X_train.shape[-1]
-        shared_layers = [4096, 1024, 256]
-        dual_layers = [128, 64, 32]
+        shared_layers = list(args.s_layers)
+        dual_layers = list(args.d_layers)
         num_knots = 5
         spline_order = 3
         noise_scale = 0.1
@@ -83,7 +72,7 @@ if __name__ == "__main__":
         base_net = DeepKAN(input_dim, shared_layers, dual_layers, num_knots, spline_order,
                         noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range).to(device)
 
-        siamesekan = SiameseKAN(base_net).to(device)
+        siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
