@@ -85,7 +85,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
     # Convert 'class_name' using the mapping
-    anno_df['class_name'] = anno_df['class_name'].map(mapping)
+    anno_df['class_name'] = anno_df['class_name'].map(mapping1)
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
     return merged_df

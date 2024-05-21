@@ -74,7 +74,7 @@ class SiameseMLP(nn.Module):
     
     def forward(self, input_a, input_b):
         type_a, pheno_a = self.base_network(input_a)
-        tybe_b, pheno_b = self.base_network(input_b)
-        type_distance = torch.norm(type_a - tybe_b, p=2, dim=1)
+        type_b, pheno_b = self.base_network(input_b)
+        type_distance = torch.norm(type_a - type_b, p=2, dim=1)
         pheno_distance = torch.norm(pheno_a - pheno_b, p=2, dim=1)
         return type_distance, pheno_distance

@@ -10,7 +10,7 @@ import numpy as np
 from modules.mlp_model import MLP, SiameseMLP
 from modules.kan_model import DeepKAN, SiameseKAN
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import torch.nn as nn
 
 parser = argparse.ArgumentParser()
 parser.add_argument("num_samples", type=int)
@@ -61,13 +61,29 @@ if __name__ == "__main__":
     hidden_layers = list(args.h_layers)
 
     if args.tag == 'mlp':
-        #base_net = MLP(X_train.shape[-1], hidden_layers, output_size=32).to(device)
         base_net = MLP(X_train.shape[-1]).to(device)
         siamese_model = SiameseMLP(base_net).to(device)
 
     elif args.tag == 'kan':
-        base_net = DeepKAN(X_train.shape[-1], hidden_layers).to(device)
-        siamese_model = SiameseKAN(base_net).to(device)
+        #base_net = DeepKAN(X_train.shape[-1], hidden_layers).to(device)
+        #siamese_model = SiameseKAN(base_net).to(device)
+
+        input_dim = X_train.shape[-1]
+        shared_layers = [4096, 1024, 256]
+        dual_layers = [128, 64, 32]
+        num_knots = 5
+        spline_order = 3
+        noise_scale = 0.1
+        base_scale = 1.0
+        spline_scale = 1.0
+        activation = nn.SiLU
+        grid_epsilon = 0.02
+        grid_range = [-1, 1]
+
+        base_net = DeepKAN(input_dim, shared_layers, dual_layers, num_knots, spline_order,
+                        noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range).to(device)
+
+        siamesekan = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
 
