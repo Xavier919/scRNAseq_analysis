@@ -55,10 +55,10 @@ mapping1 = {
  '34 Immune': 34
 }
 
-mapping2 = {'Pheno 0': 0,
-            'Pheno 1': 1,
-            'Pheno 2': 2,
-            'Pheno 3': 3}
+mapping2 = {'LD_5xFAD': 0,
+            'LD_NC': 1,
+            'run_5xFAD': 2,
+            'run_NC': 3}
 
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
