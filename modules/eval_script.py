@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     for split in range(4):
 
-        X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = get_data_splits(X, Y1, Y2, args.split, n_splits=5, shuffle=True, random_state=42)
+        X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = get_data_splits(X, Y1, Y2, split, n_splits=5, shuffle=True, random_state=42)
         
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
