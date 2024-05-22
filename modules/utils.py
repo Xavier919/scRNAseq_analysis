@@ -56,9 +56,9 @@ mapping1 = {
 }
 
 mapping2 = {'Pheno 0': 0,
-            'Pheno 1': 0,
-            'Pheno 2': 0,
-            'Pheno 3': 0}
+            'Pheno 1': 1,
+            'Pheno 2': 2,
+            'Pheno 3': 3}
 
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
