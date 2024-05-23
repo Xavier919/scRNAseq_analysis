@@ -20,10 +20,16 @@ parser.add_argument("lr", type=float)
 parser.add_argument("num_pairs", type=int)
 parser.add_argument("split", type=int)
 parser.add_argument("tag", type=str)
+parser.add_argument("margin", type=int)
 parser.add_argument('-s_layers', nargs="+", type=int)
 parser.add_argument('-d_layers', nargs="+", type=int)
 args = parser.parse_args()
 
+def contrastive_loss(y_true, y_pred, margin=args.margin):
+    square_pred = torch.square(y_pred)
+    margin_square = torch.square(torch.clamp(margin - y_pred, min=0))
+    loss = torch.mean(y_true * square_pred + (1 - y_true) * margin_square)
+    return loss
 
 if __name__ == "__main__":
 
@@ -97,7 +103,7 @@ if __name__ == "__main__":
         if np.mean(val_accuracy) > best_accuracy:
             best_accuracy = np.mean(val_accuracy)
             no_improvement_count = 0  
-            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}_{args.num_pairs}_{list(args.d_layers)[-1]}.pth')
+            torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}_{args.num_pairs}_{list(args.d_layers)[-1]}_{args.margin}.pth')
             print("Model saved as best model")
         else:
             no_improvement_count += 1  

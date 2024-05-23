@@ -121,19 +121,13 @@ def euclid_dis(vects):
     sum_square = torch.sum(torch.square(x_flat - y_flat), axis=1, keepdim=True)
     return torch.sqrt(torch.maximum(sum_square, torch.tensor(torch.finfo(float).eps).to(sum_square.device)))
 
-def contrastive_loss(y_true, y_pred, margin=1.0):
-    square_pred = torch.square(y_pred)
-    margin_square = torch.square(torch.clamp(margin - y_pred, min=0))
-    loss = torch.mean(y_true * square_pred + (1 - y_true) * margin_square)
-    return loss
-
 def calculate_accuracy(y_pred, y_true):
     pred_labels = (y_pred < 0.5).float()  
     correct = (pred_labels == y_true).float()  
     accuracy = correct.mean()  
     return accuracy
 
-def train_epoch(model, dataloader, optimizer, device, epoch):
+def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
     model.train()
     total_loss1 = 0
     total_loss2 = 0
@@ -161,7 +155,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch):
     avg_loss2 = total_loss2 / len(dataloader)
     return avg_loss1, avg_loss2
 
-def eval_model(model, dataloader, device, epoch):
+def eval_model(model, dataloader, device, epoch, contrastive_loss):
     model.eval()
     total_accuracy1 = 0
     total_accuracy2 = 0
