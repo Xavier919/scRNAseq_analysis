@@ -88,6 +88,7 @@ if __name__ == "__main__":
     print(f"Epochs: {args.epochs}")
     print(f"Split: {args.split}")
     print(f"Tag: {args.tag}")
+    print(f"Margin: {args.margin}")
     print(f"Hidden layers: {args.s_layers}")
     print(f"Dual layers: {args.d_layers}")
 
