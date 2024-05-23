@@ -68,7 +68,7 @@ if __name__ == "__main__":
             base_net = DeepKAN(input_dim, shared_layers, dual_layers, num_knots, spline_order,
                             noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range)
 
-        model_path = f'{args.model_name}_{split}.pth'
+        model_path = args.model_name
         checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
         state_dict = {key: value for key, value in checkpoint.items()}
         base_net.load_state_dict(state_dict)
@@ -90,7 +90,7 @@ if __name__ == "__main__":
             targets2.append(int(Y2.detach().numpy()[0]))
 
         results = (outputs1, outputs2, targets1, targets2)
-        pickle.dump(results, open(f'embed_{args.model_name}_{split}.pkl', 'wb'))
+        pickle.dump(results, open(f'embed_{args.model_name}.pkl', 'wb'))
 
         get_umap(np.stack(outputs1), targets1, args.model_name, 'type', mapping1)
 
