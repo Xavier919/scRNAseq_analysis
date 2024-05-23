@@ -97,8 +97,8 @@ if __name__ == "__main__":
     no_improvement_count = 0 
 
     for epoch in range(epochs):
-        train_loss = train_epoch(siamese_model, train_loader, optimizer, device, epoch)
-        val_accuracy = eval_model(siamese_model, test_loader, device, epoch)
+        train_loss = train_epoch(siamese_model, train_loader, optimizer, device, epoch, contrastive_loss)
+        val_accuracy = eval_model(siamese_model, test_loader, device, epoch, contrastive_loss)
         print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
 
         if np.mean(val_accuracy) > best_accuracy:
