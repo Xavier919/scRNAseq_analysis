@@ -67,7 +67,6 @@ if __name__ == "__main__":
             base_net = DeepKAN(input_dim, shared_layers, dual_layers, num_knots, spline_order,
                             noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range)
 
-
         model_path = f'{args.tag}_{split}.pth'
         checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
         state_dict = {key: value for key, value in checkpoint.items()}
