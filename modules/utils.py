@@ -74,6 +74,8 @@ def merge_dataframes(sc_file_path, anno_file_path):
         sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
     else:
         sc_df = adata.to_df()
+    # Remove columns starting with 'mt-'
+    sc_df = sc_df.loc[:, ~sc_df.columns.str.startswith('mt-')]
     # Set the index name to 'cell_id'
     sc_df.index.name = 'cell_id'
     # Convert index to string
