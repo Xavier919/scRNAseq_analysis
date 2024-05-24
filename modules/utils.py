@@ -74,8 +74,6 @@ def merge_dataframes(sc_file_path, anno_file_path):
         sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
     else:
         sc_df = adata.to_df()
-    # Remove columns starting with 'mt-'
-    #sc_df = sc_df.loc[:, ~sc_df.columns.str.startswith('mt-')]
     # Set the index name to 'cell_id'
     sc_df.index.name = 'cell_id'
     # Convert index to string
@@ -224,61 +222,3 @@ def get_umap(X, Y, tag, sec_tag, mapping):
     plt.savefig(f'umap_{tag}_{sec_tag}.png', bbox_inches='tight')
     plt.show()
 
-
-def get_shap_values(model, X, bg_size=100, n_instances=1000):
-    """ Calculate the shap value for a given model and dataset. """
-
-    np.random.seed(1)
-    background = shap.kmeans(X, bg_size)  # Background data for SHAP calculations
-    explainer = shap.KernelExplainer(model.predict, background)
-
-    if n_instances == -1:  # Use all instances
-        X_shap = X
-    else:
-        # Randomly select n_instances
-        X_shap = X[np.random.randint(0, high=X.shape[0], size=n_instances)]
-
-    return explainer.shap_values(X_shap)
-
-
-def plot_SHAP(SHAP_values, X, feature_names, n_features=20, save_path=None):
-    """ Plot the shap values for a given dataset. """
-
-    # Plot the shap values
-    shap.summary_plot(SHAP_values, X, feature_names=feature_names,
-                      show=False, max_display=n_features)
-
-    if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight')
-        plt.close()
-    else:
-        plt.show()
-
-def plot_knots(layer):
-    for i in range(layer.input_dim):
-        plt.figure(figsize=(10, 2))
-        plt.plot(layer.knots[i].cpu().numpy(), label=f'Dimension {i+1}')
-        plt.title(f'Knots for Input Dimension {i+1}')
-        plt.xlabel('Knot Index')
-        plt.ylabel('Knot Position')
-        plt.legend()
-        plt.show()
-
-def plot_splines(layer, input_dim_idx, output_dim_idx, num_points=10):
-    # Ensure num_points is within a reasonable range
-    num_points = min(num_points, 100)  # Limit to a maximum of 1000 points
-    # Generate x values and compute B-spline bases
-    x = torch.linspace(layer.grid_range[0], layer.grid_range[1], num_points)
-    bases = layer._compute_b_splines(x.unsqueeze(1)).squeeze(1)
-    weights = layer._scaled_spline_weights[output_dim_idx, input_dim_idx].detach().numpy()
-    # Compute spline values
-    spline_values = bases @ weights
-    # Plot the spline
-    plt.figure(figsize=(10, 4))
-    plt.plot(x.numpy(), spline_values.numpy(),
-             label=f'Spline for Input Dim {input_dim_idx + 1} to Output Dim {output_dim_idx + 1}')
-    plt.title(f'Spline Transformation from Input Dim {input_dim_idx + 1} to Output Dim {output_dim_idx + 1}')
-    plt.xlabel('Input Value')
-    plt.ylabel('Spline Output')
-    #plt.legend()
-    plt.show()
