@@ -22,7 +22,7 @@ parser.add_argument("split", type=int)
 parser.add_argument("tag", type=str)
 parser.add_argument("margin", type=float)
 parser.add_argument('-s_layers', nargs="+", type=int)
-parser.add_argument('-d_layers', nargs="+", type=int)
+#parser.add_argument('-d_layers', nargs="+", type=int)
 args = parser.parse_args()
 
 def contrastive_loss(y_true, y_pred, margin=args.margin):
@@ -58,14 +58,12 @@ if __name__ == "__main__":
     if args.tag == 'mlp':
         input_dim = X_train.shape[-1]
         shared_layers = list(args.s_layers)
-        dual_layers = list(args.d_layers)
-        base_net = MLP(input_dim, shared_layers, dual_layers, activation=nn.GELU).to(device)
+        base_net = MLP(input_dim, shared_layers, activation=nn.GELU).to(device)
         siamese_model = SiameseMLP(base_net).to(device)
 
     elif args.tag == 'kan':
         input_dim = X_train.shape[-1]
         shared_layers = list(args.s_layers)
-        dual_layers = list(args.d_layers)
         num_knots = 5
         spline_order = 3
         noise_scale = 0.1
@@ -75,7 +73,7 @@ if __name__ == "__main__":
         grid_epsilon = 0.02
         grid_range = [-1, 1]
 
-        base_net = DeepKAN(input_dim, shared_layers, dual_layers, num_knots, spline_order,
+        base_net = DeepKAN(input_dim, shared_layers, num_knots, spline_order,
                         noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range).to(device)
 
         siamese_model = SiameseKAN(base_net).to(device)
@@ -90,7 +88,7 @@ if __name__ == "__main__":
     print(f"Tag: {args.tag}")
     print(f"Margin: {args.margin}")
     print(f"Hidden layers: {args.s_layers}")
-    print(f"Dual layers: {args.d_layers}")
+    #print(f"Dual layers: {args.d_layers}")
 
     epochs = args.epochs
     best_accuracy = 0
