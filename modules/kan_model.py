@@ -3,169 +3,6 @@ import math
 import torch
 import torch.nn as nn
 
-class SplineLinearLayer(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, num_knots=5, spline_order=3,
-                 noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
-                 activation=torch.nn.SiLU, grid_epsilon=0.02, grid_range=[-1, 1],
-                 standalone_spline_scaling=True):
-        super(SplineLinearLayer, self).__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.num_knots = num_knots
-        self.spline_order = spline_order
-        self.grid_epsilon = grid_epsilon
-        self.grid_range = grid_range
-        self.standalone_spline_scaling = standalone_spline_scaling
-
-        self.knots = self._calculate_knots(grid_range, num_knots, spline_order)
-        self.base_weights = torch.nn.Parameter(torch.Tensor(output_dim, input_dim))
-        self.spline_weights = torch.nn.Parameter(torch.Tensor(output_dim, input_dim, num_knots + spline_order))
-        if standalone_spline_scaling:
-            self.spline_scales = torch.nn.Parameter(torch.Tensor(output_dim, input_dim))
-
-        self.noise_scale = noise_scale
-        self.base_scale = base_scale
-        self.spline_scale = spline_scale
-        self.activation = activation()
-
-        self._initialize_parameters()
-
-    def _initialize_parameters(self):
-        torch.nn.init.xavier_uniform_(self.base_weights, gain=torch.sqrt(torch.tensor(2.0)))
-        noise = torch.rand(self.num_knots + 1, self.input_dim, self.output_dim) - 0.5
-        self.spline_weights.data.copy_(self.spline_scale * self._initialize_spline_weights(noise))
-        if self.standalone_spline_scaling:
-            torch.nn.init.xavier_uniform_(self.spline_scales, gain=torch.sqrt(torch.tensor(2.0)))
-
-    def _calculate_knots(self, grid_range, num_knots, spline_order):
-        h = (grid_range[1] - grid_range[0]) / num_knots
-        knots = torch.arange(-spline_order, num_knots + spline_order + 1) * h + grid_range[0]
-        return knots.expand(self.input_dim, -1).contiguous()
-
-    def _initialize_spline_weights(self, noise):
-        return self._fit_curve_to_coefficients(self.knots.T[self.spline_order : -self.spline_order], noise)
-
-    def _compute_b_splines(self, x):
-        self.knots = self.knots.to(x.device)
-        x = x.unsqueeze(-1)
-        bases = ((x >= self.knots[:, :-1]) & (x < self.knots[:, 1:])).to(x.dtype)
-        for k in range(1, self.spline_order + 1):
-            bases = ((x - self.knots[:, : -(k + 1)]) / (self.knots[:, k:-1] - self.knots[:, : -(k + 1)]) * bases[:, :, :-1] +
-                     (self.knots[:, k + 1 :] - x) / (self.knots[:, k + 1 :] - self.knots[:, 1:(-k)]) * bases[:, :, 1:])
-        return bases.contiguous()
-
-    def _fit_curve_to_coefficients(self, x, y):
-        A = self._compute_b_splines(x).transpose(0, 1)
-        B = y.transpose(0, 1)
-        solution = torch.linalg.lstsq(A, B).solution
-        return solution.permute(2, 0, 1).contiguous()
-
-    @property
-    def _scaled_spline_weights(self):
-        return self.spline_weights * (self.spline_scales.unsqueeze(-1) if self.standalone_spline_scaling else 1.0)
-
-    def forward(self, x):
-        base_output = F.linear(self.activation(x), self.base_weights)
-        spline_output = F.linear(self._compute_b_splines(x).view(x.size(0), -1),
-                                 self._scaled_spline_weights.view(self.output_dim, -1))
-        return base_output + spline_output
-
-    @torch.no_grad()
-    def _update_knots(self, x, margin=0.01):
-        batch = x.size(0)
-        splines = self._compute_b_splines(x).permute(1, 0, 2)
-        orig_coeff = self._scaled_spline_weights.permute(1, 2, 0)
-        unreduced_spline_output = torch.bmm(splines, orig_coeff).permute(1, 0, 2)
-
-        x_sorted = torch.sort(x, dim=0)[0]
-        adaptive_knots = x_sorted[torch.linspace(0, batch - 1, self.num_knots + 1, dtype=torch.int64, device=x.device)]
-
-        uniform_step = (x_sorted[-1] - x_sorted[0] + 2 * margin) / self.num_knots
-        uniform_knots = torch.arange(self.num_knots + 1, dtype=torch.float32, device=x.device).unsqueeze(1) * uniform_step + x_sorted[0] - margin
-
-        knots = self.grid_epsilon * uniform_knots + (1 - self.grid_epsilon) * adaptive_knots
-        knots = torch.cat([
-            knots[:1] - uniform_step * torch.arange(self.spline_order, 0, -1, device=x.device).unsqueeze(1),
-            knots,
-            knots[-1:] + uniform_step * torch.arange(1, self.spline_order + 1, device=x.device).unsqueeze(1),
-        ], dim=0)
-
-        self.knots.copy_(knots.T)
-        self.spline_weights.data.copy_(self._fit_curve_to_coefficients(x, unreduced_spline_output))
-
-class DeepKAN(torch.nn.Module):
-    """
-    Initializes the DeepKAN.
-
-    Args:
-        input_dim (int): Dimensionality of input data.
-        hidden_layers (list): List of hidden layer dimensions (The last one should the target layer)
-        num_knots (int): Number of knots for the spline.
-        spline_order (int): Order of the spline.
-        noise_scale (float): Scale of the noise.
-        base_scale (float): Scale of the base weights.
-        spline_scale (float): Scale of the spline weights.
-        activation (torch.nn.Module): Activation function to use.
-        grid_epsilon (float): Epsilon value for the grid.
-        grid_range (list): Range of the grid.
-    """
-    def __init__(self, input_dim, hidden_layers, num_knots=5, spline_order=3,
-                 noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
-                 activation=torch.nn.SiLU, grid_epsilon=0.02, grid_range=[-1, 1]):
-        super(DeepKAN, self).__init__()
-        layers = [input_dim] + hidden_layers
-        self.layers = torch.nn.ModuleList()
-        for in_dim, out_dim in zip(layers, layers[1:]):
-            self.layers.append(SplineLinearLayer(in_dim, out_dim, num_knots, spline_order,
-                                                 noise_scale, base_scale, spline_scale,
-                                                 activation, grid_epsilon, grid_range))
-
-    def forward(self, x, update_knots=False):
-        """
-        Forward pass of the DeepKAN.
-
-        Args:
-            x (torch.Tensor): Input tensor.
-            update_knots (bool): Whether to update knots during forward pass.
-
-        Returns:
-            torch.Tensor: Output tensor.
-        """
-        for layer in self.layers:
-            if update_knots:
-                layer._update_knots(x)
-            x = layer(x)
-        return x
-
-    def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
-        """
-        Computes the regularization loss of the DeepKAN.
-
-        Args:
-            regularize_activation (float): Regularization strength for activation.
-            regularize_entropy (float): Regularization strength for entropy.
-
-        Returns:
-            torch.Tensor: Regularization loss.
-        """
-        return sum(layer._regularization_loss(regularize_activation, regularize_entropy) for layer in self.layers)
-    
-
-class SiameseKAN(torch.nn.Module):
-    def __init__(self, base_network):
-        super(SiameseKAN, self).__init__()
-        self.base_network = base_network
-    
-    def forward(self, input_a, input_b):
-        processed_a = self.base_network(input_a)
-        processed_b = self.base_network(input_b)
-        distance = torch.norm(processed_a - processed_b, p=2, dim=1)
-        return distance
-    
-
-
-
-
 class SplineLinearLayer(nn.Module):
     def __init__(self, input_dim, output_dim, num_knots=5, spline_order=3,
                  noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
@@ -347,3 +184,165 @@ class SiameseKAN(nn.Module):
         type_distance = torch.sum((type_a - type_b) ** 2, dim=1)
         pheno_distance = torch.sum((pheno_a - pheno_b) ** 2, dim=1)
         return type_distance, pheno_distance
+    
+
+
+class SplineLinearLayer(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, num_knots=5, spline_order=3,
+                 noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
+                 activation=torch.nn.SiLU, grid_epsilon=0.02, grid_range=[-1, 1],
+                 standalone_spline_scaling=True):
+        super(SplineLinearLayer, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.num_knots = num_knots
+        self.spline_order = spline_order
+        self.grid_epsilon = grid_epsilon
+        self.grid_range = grid_range
+        self.standalone_spline_scaling = standalone_spline_scaling
+
+        self.knots = self._calculate_knots(grid_range, num_knots, spline_order)
+        self.base_weights = torch.nn.Parameter(torch.Tensor(output_dim, input_dim))
+        self.spline_weights = torch.nn.Parameter(torch.Tensor(output_dim, input_dim, num_knots + spline_order))
+        if standalone_spline_scaling:
+            self.spline_scales = torch.nn.Parameter(torch.Tensor(output_dim, input_dim))
+
+        self.noise_scale = noise_scale
+        self.base_scale = base_scale
+        self.spline_scale = spline_scale
+        self.activation = activation()
+
+        self._initialize_parameters()
+
+    def _initialize_parameters(self):
+        torch.nn.init.xavier_uniform_(self.base_weights, gain=torch.sqrt(torch.tensor(2.0)))
+        noise = torch.rand(self.num_knots + 1, self.input_dim, self.output_dim) - 0.5
+        self.spline_weights.data.copy_(self.spline_scale * self._initialize_spline_weights(noise))
+        if self.standalone_spline_scaling:
+            torch.nn.init.xavier_uniform_(self.spline_scales, gain=torch.sqrt(torch.tensor(2.0)))
+
+    def _calculate_knots(self, grid_range, num_knots, spline_order):
+        h = (grid_range[1] - grid_range[0]) / num_knots
+        knots = torch.arange(-spline_order, num_knots + spline_order + 1) * h + grid_range[0]
+        return knots.expand(self.input_dim, -1).contiguous()
+
+    def _initialize_spline_weights(self, noise):
+        return self._fit_curve_to_coefficients(self.knots.T[self.spline_order : -self.spline_order], noise)
+
+    def _compute_b_splines(self, x):
+        self.knots = self.knots.to(x.device)
+        x = x.unsqueeze(-1)
+        bases = ((x >= self.knots[:, :-1]) & (x < self.knots[:, 1:])).to(x.dtype)
+        for k in range(1, self.spline_order + 1):
+            bases = ((x - self.knots[:, : -(k + 1)]) / (self.knots[:, k:-1] - self.knots[:, : -(k + 1)]) * bases[:, :, :-1] +
+                     (self.knots[:, k + 1 :] - x) / (self.knots[:, k + 1 :] - self.knots[:, 1:(-k)]) * bases[:, :, 1:])
+        return bases.contiguous()
+
+    def _fit_curve_to_coefficients(self, x, y):
+        A = self._compute_b_splines(x).transpose(0, 1)
+        B = y.transpose(0, 1)
+        solution = torch.linalg.lstsq(A, B).solution
+        return solution.permute(2, 0, 1).contiguous()
+
+    @property
+    def _scaled_spline_weights(self):
+        return self.spline_weights * (self.spline_scales.unsqueeze(-1) if self.standalone_spline_scaling else 1.0)
+
+    def forward(self, x):
+        base_output = F.linear(self.activation(x), self.base_weights)
+        spline_output = F.linear(self._compute_b_splines(x).view(x.size(0), -1),
+                                 self._scaled_spline_weights.view(self.output_dim, -1))
+        return base_output + spline_output
+
+    @torch.no_grad()
+    def _update_knots(self, x, margin=0.01):
+        batch = x.size(0)
+        splines = self._compute_b_splines(x).permute(1, 0, 2)
+        orig_coeff = self._scaled_spline_weights.permute(1, 2, 0)
+        unreduced_spline_output = torch.bmm(splines, orig_coeff).permute(1, 0, 2)
+
+        x_sorted = torch.sort(x, dim=0)[0]
+        adaptive_knots = x_sorted[torch.linspace(0, batch - 1, self.num_knots + 1, dtype=torch.int64, device=x.device)]
+
+        uniform_step = (x_sorted[-1] - x_sorted[0] + 2 * margin) / self.num_knots
+        uniform_knots = torch.arange(self.num_knots + 1, dtype=torch.float32, device=x.device).unsqueeze(1) * uniform_step + x_sorted[0] - margin
+
+        knots = self.grid_epsilon * uniform_knots + (1 - self.grid_epsilon) * adaptive_knots
+        knots = torch.cat([
+            knots[:1] - uniform_step * torch.arange(self.spline_order, 0, -1, device=x.device).unsqueeze(1),
+            knots,
+            knots[-1:] + uniform_step * torch.arange(1, self.spline_order + 1, device=x.device).unsqueeze(1),
+        ], dim=0)
+
+        self.knots.copy_(knots.T)
+        self.spline_weights.data.copy_(self._fit_curve_to_coefficients(x, unreduced_spline_output))
+
+class DeepKAN(torch.nn.Module):
+    """
+    Initializes the DeepKAN.
+
+    Args:
+        input_dim (int): Dimensionality of input data.
+        hidden_layers (list): List of hidden layer dimensions (The last one should the target layer)
+        num_knots (int): Number of knots for the spline.
+        spline_order (int): Order of the spline.
+        noise_scale (float): Scale of the noise.
+        base_scale (float): Scale of the base weights.
+        spline_scale (float): Scale of the spline weights.
+        activation (torch.nn.Module): Activation function to use.
+        grid_epsilon (float): Epsilon value for the grid.
+        grid_range (list): Range of the grid.
+    """
+    def __init__(self, input_dim, hidden_layers, num_knots=5, spline_order=3,
+                 noise_scale=0.1, base_scale=1.0, spline_scale=1.0,
+                 activation=torch.nn.SiLU, grid_epsilon=0.02, grid_range=[-1, 1]):
+        super(DeepKAN, self).__init__()
+        layers = [input_dim] + hidden_layers
+        self.layers = torch.nn.ModuleList()
+        for in_dim, out_dim in zip(layers, layers[1:]):
+            self.layers.append(SplineLinearLayer(in_dim, out_dim, num_knots, spline_order,
+                                                 noise_scale, base_scale, spline_scale,
+                                                 activation, grid_epsilon, grid_range))
+
+    def forward(self, x, update_knots=False):
+        """
+        Forward pass of the DeepKAN.
+
+        Args:
+            x (torch.Tensor): Input tensor.
+            update_knots (bool): Whether to update knots during forward pass.
+
+        Returns:
+            torch.Tensor: Output tensor.
+        """
+        for layer in self.layers:
+            if update_knots:
+                layer._update_knots(x)
+            x = layer(x)
+        return x
+
+    def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
+        """
+        Computes the regularization loss of the DeepKAN.
+
+        Args:
+            regularize_activation (float): Regularization strength for activation.
+            regularize_entropy (float): Regularization strength for entropy.
+
+        Returns:
+            torch.Tensor: Regularization loss.
+        """
+        return sum(layer._regularization_loss(regularize_activation, regularize_entropy) for layer in self.layers)
+    
+
+class SiameseKAN(torch.nn.Module):
+    def __init__(self, base_network):
+        super(SiameseKAN, self).__init__()
+        self.base_network = base_network
+    
+    def forward(self, input_a, input_b):
+        processed_a = self.base_network(input_a)
+        processed_b = self.base_network(input_b)
+        #distance = torch.norm(processed_a - processed_b, p=2, dim=1) #euclidean distance
+        distance = torch.sum((processed_a - processed_b) ** 2, dim=1) #squared euclidean distance
+        return distance

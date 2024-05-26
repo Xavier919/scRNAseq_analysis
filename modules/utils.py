@@ -153,6 +153,28 @@ def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
     avg_loss2 = total_loss2 / len(dataloader)
     return avg_loss1, avg_loss2
 
+def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
+    model.train()
+    total_loss = 0
+    for (data_a, data_b), target in tqdm(dataloader):
+        data_a, data_b = data_a.to(device), data_b.to(device)
+        target  = target.to(device)
+        optimizer.zero_grad()
+        output = model(data_a, data_b)
+        
+        # Compute losses for both outputs
+        loss = contrastive_loss(target, output)
+        
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+        
+        writer.add_scalar("Loss/train_loss", loss.item(), epoch)
+        
+    avg_loss = total_loss / len(dataloader)
+    return avg_loss
+
 def eval_model(model, dataloader, device, epoch, contrastive_loss):
     model.eval()
     total_accuracy1 = 0
@@ -181,17 +203,38 @@ def eval_model(model, dataloader, device, epoch, contrastive_loss):
     avg_accuracy2 = total_accuracy2 / total_samples
     return avg_accuracy1, avg_accuracy2
 
+def eval_model(model, dataloader, device, epoch, contrastive_loss):
+    model.eval()
+    total_accuracy = 0
+    total_samples = 0
 
-def get_data_splits(X, Y, Z, split, n_splits=5, shuffle=True, random_state=None):
+    with torch.no_grad():
+        for (data_a, data_b), target in dataloader:
+            data_a, data_b = data_a.to(device), data_b.to(device)
+            target = target.to(device)
+            output = model(data_a, data_b)
+            
+            loss = contrastive_loss(target, output)
+            test_writer.add_scalar("Loss/test_loss", loss.item(), epoch)
+            
+            accuracy = calculate_accuracy(output, target)
+            
+            total_accuracy += accuracy.item() * data_a.size(0)
+            total_samples += data_a.size(0)
+    
+    avg_accuracy = total_accuracy / total_samples
+    return avg_accuracy
+
+
+def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     kf = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
     splits = list(kf.split(X))  
     train_index, test_index = splits[split]  
     
     X_train, X_test = X[train_index], X[test_index]
     Y_train, Y_test = Y[train_index], Y[test_index]
-    Z_train, Z_test = Z[train_index], Z[test_index]
     
-    return X_train, X_test, Y_train, Y_test, Z_train, Z_test
+    return X_train, X_test, Y_train, Y_test
 
 
 def get_umap(X, Y, tag, sec_tag, mapping):

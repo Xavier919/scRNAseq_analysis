@@ -41,17 +41,17 @@ if __name__ == "__main__":
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
     X = merged_df.drop(['class_name', 'phenotype'], axis=1).values
-    Y1 = merged_df['class_name'].values
-    Y2 = merged_df['phenotype'].values
+    Y = merged_df['class_name'].values
+    #Y = merged_df['phenotype'].values
 
-    X_train, X_test, Y1_train, Y1_test, Y2_train, Y2_test = get_data_splits(X, Y1, Y2, args.split, n_splits=5, shuffle=True, random_state=42)
+    X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = PairedDataset(X_train, (Y1_train, Y2_train), args.num_pairs)
+    train_dataset = PairedDataset(X_train, Y_train, args.num_pairs)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=1)
 
-    test_dataset = PairedDataset(X_test, (Y1_test, Y2_test), args.num_pairs)
+    test_dataset = PairedDataset(X_test, Y_test, args.num_pairs)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=1)
 
 
@@ -101,8 +101,8 @@ if __name__ == "__main__":
         val_accuracy = eval_model(siamese_model, test_loader, device, epoch, contrastive_loss)
         print(f"Epoch {epoch}, Train Loss: {train_loss}, Validation Accuracy: {val_accuracy}")
 
-        if np.mean(val_accuracy) > best_accuracy:
-            best_accuracy = np.mean(val_accuracy)
+        if val_accuracy > best_accuracy:
+            best_accuracy = val_accuracy
             no_improvement_count = 0  
             torch.save(siamese_model.base_network.state_dict(), f'{args.tag}_{args.split}_{args.num_pairs}_{list(args.d_layers)[-1]}_{args.margin}.pth')
             print("Model saved as best model")
