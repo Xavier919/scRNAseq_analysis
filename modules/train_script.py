@@ -41,8 +41,8 @@ if __name__ == "__main__":
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
     X = merged_df.drop(['class_name', 'phenotype'], axis=1).values
-    Y = merged_df['class_name'].values
-    #Y = merged_df['phenotype'].values
+    #Y = merged_df['class_name'].values
+    Y = merged_df['phenotype'].values
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
