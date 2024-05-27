@@ -26,8 +26,8 @@ if __name__ == "__main__":
     merged_df = build_dataset(dfA, dfB, dfC, dfD)
 
     X = merged_df.drop(['class_name', 'phenotype'], axis=1).values
-    Y = merged_df['class_name'].values
-    #Y = merged_df['phenotype'].values
+    #Y = merged_df['class_name'].values
+    Y = merged_df['phenotype'].values
 
     column_names = merged_df.columns.tolist()
 
@@ -84,4 +84,4 @@ if __name__ == "__main__":
         results = (outputs, targets)
         pickle.dump(results, open(f'embed_{args.model_name}.pkl', 'wb'))
 
-        get_umap(np.stack(outputs), targets, args.model_name, 'type', mapping1)
+        get_umap(np.stack(outputs), targets, args.model_name, 'type', mapping2)
