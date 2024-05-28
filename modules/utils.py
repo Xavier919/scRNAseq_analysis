@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 from umap import UMAP
 import scanpy as sc
 from matplotlib.lines import Line2D
-import shap
 
 writer = SummaryWriter()
 test_writer = SummaryWriter()
@@ -63,32 +62,76 @@ mapping2 = {'LD_5xFAD': 0,
 def merge_dataframes(sc_file_path, anno_file_path):
     # Use anndata package to read file
     adata = anndata.read_h5ad(sc_file_path)
-    # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    # Logarithmize the data
-    sc.pp.log1p(adata)
-    # Scale the data
-    sc.pp.scale(adata, max_value=10)
+    
     # Check if the data is a sparse matrix and convert to dense format
     if isinstance(adata.X, csr_matrix):
         sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
     else:
         sc_df = adata.to_df()
+    
     # Set the index name to 'cell_id'
     sc_df.index.name = 'cell_id'
+    
     # Convert index to string
     sc_df.index = sc_df.index.astype(str)
+    
+    # Print size of sc_df before removing columns
+    print("Size of sc_df before removing columns:", sc_df.shape)
+    
+    # Remove columns with no more than 100 non-zero values
+    non_zero_counts = (sc_df != 0).sum(axis=0)
+    columns_to_keep = non_zero_counts[non_zero_counts > 100].index
+    sc_df = sc_df[columns_to_keep]
+    
+    # Print size of sc_df after removing columns
+    print("Size of sc_df after removing columns:", sc_df.shape)
+    
+    # Update adata to keep only the filtered columns
+    adata = adata[:, columns_to_keep]
+
+    # Normalize the data
+    sc.pp.normalize_total(adata, target_sum=1e4)
+    
+    # Logarithmize the data
+    sc.pp.log1p(adata)
+    
+    # Scale the data
+    sc.pp.scale(adata, max_value=10)
+    
+    # Convert processed data back to DataFrame
+    if isinstance(adata.X, csr_matrix):
+        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
+    else:
+        sc_df = pd.DataFrame(adata.X, index=adata.obs_names, columns=adata.var_names)
+    
+    # Set the index name to 'cell_id' again in case it was reset
+    sc_df.index.name = 'cell_id'
+    
+    # Convert index to string again
+    sc_df.index = sc_df.index.astype(str)
+    
     # Read the file, skipping the first 4 lines
     anno_df = pd.read_csv(anno_file_path, skiprows=4)
+    
     # Set 'cell_id' as the index and keep only the 'class name' column
     anno_df = anno_df.set_index('cell_id')[['class_name']]
+    
     # Convert index to string
     anno_df.index = anno_df.index.astype(str)
+    
     # Convert 'class_name' using the mapping
     anno_df['class_name'] = anno_df['class_name'].map(mapping1)
+    
     # Merge dataframes on indexes
     merged_df = sc_df.join(anno_df)
+    
+    # Print size of merged_df
+    print("Size of merged_df:", merged_df.shape)
+    print(merged_df.head())
+    
     return merged_df
+
+
 
 def build_dataset(*dfs):
     # Ensure there's at least one dataframe
@@ -104,13 +147,25 @@ def build_dataset(*dfs):
     # Select only the common columns from each dataframe and add phenotype column
     processed_dfs = []
     for i, df in enumerate(dfs):
-        df_common = df[common_columns].copy()
-        df_common['phenotype'] = i
+        df_common = df[common_columns]
+        df_common = df_common.loc[:, common_columns]  # Ensuring it returns a view, not a copy
+        df_common.loc[:, 'phenotype'] = i  # Avoiding SettingWithCopyWarning
         processed_dfs.append(df_common)
     
     # Concatenate all dataframes
     result_df = pd.concat(processed_dfs, ignore_index=True)
+    
+    # Clear memory used by intermediate dataframes
+    del processed_dfs
+    print(result_df.head())
     return result_df
+
+
+def contrastive_loss(y_true, y_pred, margin=1):
+    square_pred = torch.square(y_pred)
+    margin_square = torch.square(torch.clamp(margin - y_pred, min=0))
+    loss = torch.mean(y_true * square_pred + (1 - y_true) * margin_square)
+    return loss
 
 def euclid_dis(vects):
     x, y = vects

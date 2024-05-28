@@ -343,6 +343,5 @@ class SiameseKAN(torch.nn.Module):
     def forward(self, input_a, input_b):
         processed_a = self.base_network(input_a)
         processed_b = self.base_network(input_b)
-        distance = torch.norm(processed_a - processed_b, p=2, dim=1) #euclidean distance
-        #distance = torch.sum((processed_a - processed_b) ** 2, dim=1) #squared euclidean distance
+        distance = torch.norm(processed_a - processed_b, p=2, dim=1)
         return distance
