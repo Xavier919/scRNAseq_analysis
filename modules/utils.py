@@ -80,7 +80,7 @@ def merge_dataframes(sc_file_path, anno_file_path):
     
     # Remove columns with no more than 100 non-zero values
     non_zero_counts = (sc_df != 0).sum(axis=0)
-    columns_to_keep = non_zero_counts[non_zero_counts > 100].index
+    columns_to_keep = non_zero_counts[non_zero_counts > 10].index
     sc_df = sc_df[columns_to_keep]
     
     # Print size of sc_df after removing columns
