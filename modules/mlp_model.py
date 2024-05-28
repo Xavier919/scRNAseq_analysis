@@ -42,7 +42,7 @@ class MLP(nn.Module):
         self.layers = nn.ModuleList()
         self.layers.append(nn.Linear(input_size, hidden_sizes[0]))
         self.dropout = nn.Dropout()
-        self.activation = nn.ReLU()
+        self.activation = nn.GELU()
         for i in range(1, len(hidden_sizes)):
             self.layers.append(nn.Linear(hidden_sizes[i - 1], hidden_sizes[i]))
         self.layers.append(nn.Linear(hidden_sizes[-1], output_size))
@@ -53,7 +53,7 @@ class MLP(nn.Module):
             if not isinstance(x, torch.Tensor):
                 raise TypeError(f"Expected output of layer to be Tensor, got {type(x)} instead.")
             x = self.activation(x)
-            x = self.dropout(x)
+            #x = self.dropout(x)
         x = self.layers[-1](x)
         return x
 

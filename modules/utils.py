@@ -79,15 +79,15 @@ def merge_dataframes(sc_file_path, anno_file_path):
     print("Size of sc_df before removing columns:", sc_df.shape)
     
     # Remove columns with no more than 100 non-zero values
-    non_zero_counts = (sc_df != 0).sum(axis=0)
-    columns_to_keep = non_zero_counts[non_zero_counts > 10].index
-    sc_df = sc_df[columns_to_keep]
+    #non_zero_counts = (sc_df != 0).sum(axis=0)
+    #columns_to_keep = non_zero_counts[non_zero_counts > 10].index
+    #sc_df = sc_df[columns_to_keep]
     
     # Print size of sc_df after removing columns
     print("Size of sc_df after removing columns:", sc_df.shape)
     
     # Update adata to keep only the filtered columns
-    adata = adata[:, columns_to_keep]
+    #adata = adata[:, columns_to_keep]
 
     # Normalize the data
     sc.pp.normalize_total(adata, target_sum=1e4)
@@ -151,6 +151,7 @@ def build_dataset(*dfs):
         df_common = df_common.loc[:, common_columns]  # Ensuring it returns a view, not a copy
         df_common.loc[:, 'phenotype'] = i  # Avoiding SettingWithCopyWarning
         processed_dfs.append(df_common)
+        del df_common
     
     # Concatenate all dataframes
     result_df = pd.concat(processed_dfs, ignore_index=True)
