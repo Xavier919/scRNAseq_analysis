@@ -36,24 +36,31 @@ class SiameseMLP(nn.Module):
         return type_distance, pheno_distance
     
 
+
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size=32):
+    def __init__(self, input_size, layer_sizes):
         super(MLP, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(nn.Linear(input_size, hidden_sizes[0]))
-        self.dropout = nn.Dropout()
+        self.batchnorms = nn.ModuleList()
+        
+        # Create the first layer with input_size
+        self.layers.append(nn.Linear(input_size, layer_sizes[0]))
+        self.batchnorms.append(nn.BatchNorm1d(layer_sizes[0]))
+        
+        # Create subsequent layers based on layer_sizes
+        for i in range(1, len(layer_sizes)):
+            self.layers.append(nn.Linear(layer_sizes[i - 1], layer_sizes[i]))
+            self.batchnorms.append(nn.BatchNorm1d(layer_sizes[i]))
+        
         self.activation = nn.GELU()
-        for i in range(1, len(hidden_sizes)):
-            self.layers.append(nn.Linear(hidden_sizes[i - 1], hidden_sizes[i]))
-        self.layers.append(nn.Linear(hidden_sizes[-1], output_size))
+        self.dropout = nn.Dropout()
 
     def forward(self, x):
-        for layer in self.layers[:-1]:
+        for i, layer in enumerate(self.layers[:-1]):
             x = layer(x)
-            if not isinstance(x, torch.Tensor):
-                raise TypeError(f"Expected output of layer to be Tensor, got {type(x)} instead.")
+            x = self.batchnorms[i](x)
             x = self.activation(x)
-            #x = self.dropout(x)
+            #x = self.dropout(x)  
         x = self.layers[-1](x)
         return x
 
@@ -66,4 +73,5 @@ class SiameseMLP(nn.Module):
         processed_a = self.base_network(input_a)
         processed_b = self.base_network(input_b)
         distance = torch.norm(processed_a - processed_b, p=2, dim=1)
+        #distance = torch.sum((processed_a - processed_b) ** 2, dim=1)
         return distance

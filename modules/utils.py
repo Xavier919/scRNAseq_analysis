@@ -2,164 +2,22 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import pandas as pd
 from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score
 from sklearn.model_selection import KFold
 from tqdm import tqdm
-import anndata
 from scipy.sparse import csr_matrix
-import numpy as np
 import matplotlib.pyplot as plt
 from umap import UMAP
 import scanpy as sc
 from matplotlib.lines import Line2D
+import anndata
+from sklearn.decomposition import PCA
+from sklearn.cluster import DBSCAN
+from collections import Counter
+from sklearn.cluster import KMeans
 
 writer = SummaryWriter()
 test_writer = SummaryWriter()
-
-mapping1 = {
- '01 IT-ET Glut': 1,
- '02 NP-CT-L6b Glut': 2,
- '03 OB-CR Glut': 3,
- '04 DG-IMN Glut': 4,
- '05 OB-IMN GABA': 5,
- '06 CTX-CGE GABA': 6,
- '07 CTX-MGE GABA': 7,
- '08 CNU-MGE GABA': 8,
- '09 CNU-LGE GABA': 9,
- '10 LSX GABA': 10,
- '11 CNU-HYa GABA': 11,
- '12 HY GABA': 12,
- '13 CNU-HYa Glut': 13,
- '14 HY Glut': 14,
- '15 HY Gnrh1 Glut': 15,
- '16 HY MM Glut': 16,
- '17 MH-LH Glut': 17,
- '18 TH Glut': 18,
- '19 MB Glut': 19,
- '20 MB GABA': 20,
- '21 MB Dopa': 21,
- '22 MB-HB Sero': 22,
- '23 P Glut': 23,
- '24 MY Glut': 24,
- '25 Pineal Glut': 25,
- '26 P GABA': 26,
- '27 MY GABA': 27,
- '28 CB GABA': 28,
- '29 CB Glut': 29,
- '30 Astro-Epen': 30,
- '31 OPC-Oligo': 31,
- '32 OEC': 32,
- '33 Vascular': 33,
- '34 Immune': 34
-}
-
-mapping2 = {'LD_5xFAD': 0,
-            'LD_NC': 1,
-            'run_5xFAD': 2,
-            'run_NC': 3}
-
-def merge_dataframes(sc_file_path, anno_file_path):
-    # Use anndata package to read file
-    adata = anndata.read_h5ad(sc_file_path)
-    
-    # Check if the data is a sparse matrix and convert to dense format
-    if isinstance(adata.X, csr_matrix):
-        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
-    else:
-        sc_df = adata.to_df()
-    
-    # Set the index name to 'cell_id'
-    sc_df.index.name = 'cell_id'
-    
-    # Convert index to string
-    sc_df.index = sc_df.index.astype(str)
-    
-    # Print size of sc_df before removing columns
-    print("Size of sc_df before removing columns:", sc_df.shape)
-    
-    # Remove columns with no more than 100 non-zero values
-    #non_zero_counts = (sc_df != 0).sum(axis=0)
-    #columns_to_keep = non_zero_counts[non_zero_counts > 10].index
-    #sc_df = sc_df[columns_to_keep]
-    
-    # Print size of sc_df after removing columns
-    print("Size of sc_df after removing columns:", sc_df.shape)
-    
-    # Update adata to keep only the filtered columns
-    #adata = adata[:, columns_to_keep]
-
-    # Normalize the data
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    
-    # Logarithmize the data
-    sc.pp.log1p(adata)
-    
-    # Scale the data
-    sc.pp.scale(adata, max_value=10)
-    
-    # Convert processed data back to DataFrame
-    if isinstance(adata.X, csr_matrix):
-        sc_df = pd.DataFrame(adata.X.toarray(), index=adata.obs_names, columns=adata.var_names)
-    else:
-        sc_df = pd.DataFrame(adata.X, index=adata.obs_names, columns=adata.var_names)
-    
-    # Set the index name to 'cell_id' again in case it was reset
-    sc_df.index.name = 'cell_id'
-    
-    # Convert index to string again
-    sc_df.index = sc_df.index.astype(str)
-    
-    # Read the file, skipping the first 4 lines
-    anno_df = pd.read_csv(anno_file_path, skiprows=4)
-    
-    # Set 'cell_id' as the index and keep only the 'class name' column
-    anno_df = anno_df.set_index('cell_id')[['class_name']]
-    
-    # Convert index to string
-    anno_df.index = anno_df.index.astype(str)
-    
-    # Convert 'class_name' using the mapping
-    anno_df['class_name'] = anno_df['class_name'].map(mapping1)
-    
-    # Merge dataframes on indexes
-    merged_df = sc_df.join(anno_df)
-    
-    # Print size of merged_df
-    print("Size of merged_df:", merged_df.shape)
-    print(merged_df.head())
-    
-    return merged_df
-
-
-
-def build_dataset(*dfs):
-    # Ensure there's at least one dataframe
-    if not dfs:
-        raise ValueError("At least one dataframe must be provided")
-    
-    # Find common columns among all dataframes
-    common_columns = set(dfs[0].columns)
-    for df in dfs[1:]:
-        common_columns &= set(df.columns)
-    common_columns = list(common_columns)
-    
-    # Select only the common columns from each dataframe and add phenotype column
-    processed_dfs = []
-    for i, df in enumerate(dfs):
-        df_common = df[common_columns]
-        df_common = df_common.loc[:, common_columns]  # Ensuring it returns a view, not a copy
-        df_common.loc[:, 'phenotype'] = i  # Avoiding SettingWithCopyWarning
-        processed_dfs.append(df_common)
-        del df_common
-    
-    # Concatenate all dataframes
-    result_df = pd.concat(processed_dfs, ignore_index=True)
-    
-    # Clear memory used by intermediate dataframes
-    del processed_dfs
-    print(result_df.head())
-    return result_df
 
 
 def contrastive_loss(y_true, y_pred, margin=1):
@@ -181,45 +39,23 @@ def calculate_accuracy(y_pred, y_true):
     accuracy = correct.mean()  
     return accuracy
 
-def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
-    model.train()
-    total_loss1 = 0
-    total_loss2 = 0
-    for (data_a, data_b), target1, target2 in tqdm(dataloader):
-        data_a, data_b = data_a.to(device), data_b.to(device)
-        target1, target2 = target1.to(device), target2.to(device)
-        optimizer.zero_grad()
-        output1, output2 = model(data_a, data_b)
-        
-        # Compute losses for both outputs
-        loss1 = contrastive_loss(target1, output1)
-        loss2 = contrastive_loss(target2, output2)
-        loss = (loss1 + loss2) / 2
-        
-        loss.backward()
-        optimizer.step()
-        
-        total_loss1 += loss1.item()
-        total_loss2 += loss2.item()
-        
-        writer.add_scalar("Loss/train_loss1", loss1.item(), epoch)
-        writer.add_scalar("Loss/train_loss2", loss2.item(), epoch)
-        
-    avg_loss1 = total_loss1 / len(dataloader)
-    avg_loss2 = total_loss2 / len(dataloader)
-    return avg_loss1, avg_loss2
-
-def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
+def train_epoch(model, dataloader, optimizer, device, epoch):
     model.train()
     total_loss = 0
+
+    regularize_activation = 10
+    regularize_entropy = 10
+    l1_lambda = 0.1
     for (data_a, data_b), target in tqdm(dataloader):
         data_a, data_b = data_a.to(device), data_b.to(device)
         target  = target.to(device)
         optimizer.zero_grad()
         output = model(data_a, data_b)
         
-        # Compute losses for both outputs
         loss = contrastive_loss(target, output)
+
+        #reg_loss = model.base_network.regularization_loss(regularize_activation, regularize_entropy)
+        #loss = loss + l1_lambda * reg_loss
         
         loss.backward()
         optimizer.step()
@@ -231,35 +67,7 @@ def train_epoch(model, dataloader, optimizer, device, epoch, contrastive_loss):
     avg_loss = total_loss / len(dataloader)
     return avg_loss
 
-def eval_model(model, dataloader, device, epoch, contrastive_loss):
-    model.eval()
-    total_accuracy1 = 0
-    total_accuracy2 = 0
-    total_samples = 0
-
-    with torch.no_grad():
-        for (data_a, data_b), target1, target2 in dataloader:
-            data_a, data_b = data_a.to(device), data_b.to(device)
-            target1, target2 = target1.to(device), target2.to(device)
-            output1, output2 = model(data_a, data_b)
-            
-            loss1 = contrastive_loss(target1, output1)
-            loss2 = contrastive_loss(target2, output2)
-            test_writer.add_scalar("Loss/test_loss1", loss1.item(), epoch)
-            test_writer.add_scalar("Loss/test_loss2", loss2.item(), epoch)
-            
-            accuracy1 = calculate_accuracy(output1, target1)
-            accuracy2 = calculate_accuracy(output2, target2)
-            
-            total_accuracy1 += accuracy1.item() * data_a.size(0)
-            total_accuracy2 += accuracy2.item() * data_a.size(0)
-            total_samples += data_a.size(0)
-    
-    avg_accuracy1 = total_accuracy1 / total_samples
-    avg_accuracy2 = total_accuracy2 / total_samples
-    return avg_accuracy1, avg_accuracy2
-
-def eval_model(model, dataloader, device, epoch, contrastive_loss):
+def eval_model(model, dataloader, device, epoch):
     model.eval()
     total_accuracy = 0
     total_samples = 0
@@ -293,9 +101,9 @@ def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     return X_train, X_test, Y_train, Y_test
 
 
-def get_umap(X, Y, tag, sec_tag, mapping):
+def get_umap(X, Y, tag, mapping):
     mapping = {y:x for x,y in mapping.items()}
-    reducer = UMAP(n_neighbors=100, n_components=2)
+    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
     embedding = reducer.fit_transform(X)
 
     plt.figure(figsize=(10, 8))
@@ -318,6 +126,155 @@ def get_umap(X, Y, tag, sec_tag, mapping):
     
     plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
-    plt.savefig(f'umap_{tag}_{sec_tag}.png', bbox_inches='tight')
+    plt.savefig(f'{tag}.png', bbox_inches='tight')
     plt.show()
 
+def get_clustering(X, Y, tag, mapping, n_clusters=4):
+    mapping = {y: x for x, y in mapping.items()}
+    Y = np.array(Y)
+    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
+    embedding = reducer.fit_transform(X)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+    labels = kmeans.fit_predict(embedding)
+    plt.figure(figsize=(10, 8))
+    unique_labels = np.unique(labels)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
+    
+    for label, color in zip(unique_labels, colors):
+        indices = np.where(labels == label)
+        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=f'Cluster {label}', s=0.1)
+
+    plt.title('UMAP - 2D projection of learned embedding with KMeans clusters')
+    plt.xlabel('UMAP 1')
+    plt.ylabel('UMAP 2')
+    
+    handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=f'Cluster {label}')
+               for label, color in zip(unique_labels, colors)]
+    
+    plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.grid(True)
+    plt.savefig(f'{tag}.png', bbox_inches='tight')
+    plt.show()
+
+    cluster_composition = {}
+    for label in unique_labels:
+        indices = np.where(labels == label)[0]
+        cluster_labels = Y[indices]
+        counter = Counter(cluster_labels)
+        sorted_counter = dict(sorted(counter.items(), key=lambda item: item[1], reverse=True))
+        cluster_composition[label] = {mapping[y]: count for y, count in sorted_counter.items()}
+    
+    return cluster_composition
+
+def plot_cluster_composition(cluster_composition, tag):
+    cluster_labels = list(cluster_composition.keys())
+    all_sub_labels = sorted({sub_label for comp in cluster_composition.values() for sub_label in comp.keys()})
+    
+    composition_matrix = np.zeros((len(cluster_labels), len(all_sub_labels)))
+    
+    for i, cluster in enumerate(cluster_labels):
+        for j, sub_label in enumerate(all_sub_labels):
+            composition_matrix[i, j] = cluster_composition[cluster].get(sub_label, 0)
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    colors = plt.cm.jet(np.linspace(0, 1, len(all_sub_labels)))
+    
+    bottom = np.zeros(len(cluster_labels))
+    for j, sub_label in enumerate(all_sub_labels):
+        ax.bar(cluster_labels, composition_matrix[:, j], bottom=bottom, color=colors[j], label=sub_label)
+        bottom += composition_matrix[:, j]
+    
+    ax.set_xlabel('Clusters')
+    ax.set_ylabel('Cell count')
+    ax.set_title('Cluster Composition')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(cluster_labels)
+    plt.grid(True)
+    plt.savefig(f'{tag}.png', bbox_inches='tight')
+    plt.show()
+
+def get_redux(X, Y, mapping):
+    mapping = {y: x for x, y in mapping.items()}
+    
+    pca = PCA(n_components=10)
+    pca_result = pca.fit_transform(X)
+    
+    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
+    embedding = reducer.fit_transform(pca_result)
+
+    plt.figure(figsize=(10, 8))
+
+    unique_targets = np.unique(Y)
+    colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
+    markersize_scatter = 0.1  
+    markersize_legend = 10  
+
+    for target, color in zip(unique_targets, colors):
+        indices = np.where(Y == target)
+        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=mapping[target], s=markersize_scatter)
+
+    plt.title('UMAP - 2D projection of PCA reduced embedding')
+    plt.xlabel('UMAP 1')
+    plt.ylabel('UMAP 2')
+
+    handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=markersize_legend, label=mapping[target])
+               for target, color in zip(unique_targets, colors)]
+    
+    plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.grid(True)
+    plt.savefig('pca_umap.png', bbox_inches='tight')
+    plt.show()
+
+
+def get_pie_chart(data, cluster_id, mapping):
+    data = data[cluster_id]
+    # Grouping data under 1% into 'Others'
+    threshold = 0.01 * sum(data.values())
+    grouped_data = {k: v for k, v in data.items() if v >= threshold}
+    others_value = sum(v for v in data.values() if v < threshold)
+    if others_value > 0:
+        grouped_data['Others'] = others_value
+
+    # Get the color map
+    jet = plt.get_cmap('jet')
+    norm = plt.Normalize(1, 34)
+    colors = {key: jet(norm(value)) for key, value in mapping.items()}
+    colors['Others'] = 'gray'
+
+    # Pie chart with grouped data and custom colors
+    labels = list(grouped_data.keys())
+    sizes = list(grouped_data.values())
+    color_list = [colors[label] for label in labels]
+
+    plt.figure(figsize=(10, 8))
+    plt.pie(sizes, labels=labels, colors=color_list, autopct='%1.1f%%', startangle=140)
+    plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    plt.savefig(f'pie_chart_cluster{cluster_id}.png', bbox_inches='tight')
+    plt.show()
+
+def get_pie_chart(data, cluster_id, mapping):
+    data = data[cluster_id]
+    # Grouping data under 1% into 'Others'
+    threshold = 0.01 * sum(data.values())
+    grouped_data = {k: v for k, v in data.items() if v >= threshold}
+    others_value = sum(v for v in data.values() if v < threshold)
+    if others_value > 0:
+        grouped_data['Others'] = others_value
+
+    # Get the color map
+    jet = plt.get_cmap('jet')
+    norm = plt.Normalize(1, 34)
+    colors = {key: jet(norm(value)) for key, value in mapping.items()}
+    colors['Others'] = 'gray'
+
+    # Pie chart with grouped data and custom colors
+    labels = list(grouped_data.keys())
+    sizes = list(grouped_data.values())
+    color_list = [colors.get(label, 'gray') for label in labels]  # Use gray if label is not in the mapping
+
+    plt.figure(figsize=(10, 8))
+    plt.pie(sizes, labels=labels, colors=color_list, autopct='%1.1f%%', startangle=140)
+    plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    plt.savefig(f'pie_chart_cluster{cluster_id}.png', bbox_inches='tight')
+    plt.show()
