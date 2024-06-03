@@ -49,8 +49,8 @@ if __name__ == "__main__":
 
 
     X = sc_df.drop(['Sample_Tag', 'class_name'], axis=1).values
-    Y = sc_df['Sample_Tag'].map(mapping2).astype(np.float32).values
-    #Y = sc_df['class_name'].astype(np.float32).values
+    #Y = sc_df['Sample_Tag'].map(mapping2).astype(np.float32).values
+    Y = sc_df['class_name'].astype(np.float32).values
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
