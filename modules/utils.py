@@ -101,180 +101,97 @@ def get_data_splits(X, Y, split, n_splits=5, shuffle=True, random_state=None):
     return X_train, X_test, Y_train, Y_test
 
 
-def get_umap(X, Y, tag, mapping):
-    mapping = {y:x for x,y in mapping.items()}
-    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
-    embedding = reducer.fit_transform(X)
-
+def visualize_umap(X, Y, mapping):
     plt.figure(figsize=(10, 8))
-
     unique_targets = np.unique(Y)
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
-    markersize_scatter = 0.1 
-    markersize_legend = 10  
-
+    markersize_scatter = 0.1  
+    markersize_legend = 10
     for target, color in zip(unique_targets, colors):
         indices = np.where(Y == target)
-        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=mapping[target], s=markersize_scatter)
-
-    plt.title('UMAP - 2D projection of learned embedding')
+        plt.scatter(X[indices, 0], X[indices, 1], color=color, label=mapping[target], s=markersize_scatter)
     plt.xlabel('UMAP 1')
     plt.ylabel('UMAP 2')
-
     handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=markersize_legend, label=mapping[target])
                for target, color in zip(unique_targets, colors)]
-    
     plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
     plt.grid(True)
-    plt.savefig(f'{tag}.png', bbox_inches='tight')
+    plt.savefig('umap.png', bbox_inches='tight')
     plt.show()
 
-def get_clustering(X, Y, tag, mapping, n_clusters=4):
-    mapping = {y: x for x, y in mapping.items()}
-    Y = np.array(Y)
-    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
-    embedding = reducer.fit_transform(X)
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
-    labels = kmeans.fit_predict(embedding)
+def get_clustering(umap_result, kmeans_result):
     plt.figure(figsize=(10, 8))
-    unique_labels = np.unique(labels)
+    unique_labels = np.unique(kmeans_result)
     colors = plt.cm.viridis(np.linspace(0, 1, len(unique_labels)))
-    
     for label, color in zip(unique_labels, colors):
-        indices = np.where(labels == label)
-        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=f'Cluster {label}', s=0.1)
-
-    plt.title('UMAP - 2D projection of learned embedding with KMeans clusters')
+        indices = np.where(kmeans_result == label)
+        plt.scatter(umap_result[indices, 0], umap_result[indices, 1], color=color, label=f'Cluster {label}', s=0.1)
     plt.xlabel('UMAP 1')
     plt.ylabel('UMAP 2')
-    
+    plt.grid(True)
     handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=f'Cluster {label}')
                for label, color in zip(unique_labels, colors)]
-    
     plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.grid(True)
-    plt.savefig(f'{tag}.png', bbox_inches='tight')
+    plt.savefig('kmeans.png', bbox_inches='tight')
     plt.show()
-
+    
+def get_cluster_composition(kmeans_result, Y):
+    Y = np.array(Y)
+    clusters = np.unique(kmeans_result)
     cluster_composition = {}
-    for label in unique_labels:
-        indices = np.where(labels == label)[0]
+    for cluster in clusters:
+        indices = np.where(kmeans_result == cluster)[0]
         cluster_labels = Y[indices]
         counter = Counter(cluster_labels)
         sorted_counter = dict(sorted(counter.items(), key=lambda item: item[1], reverse=True))
-        cluster_composition[label] = {mapping[y]: count for y, count in sorted_counter.items()}
-    
+        cluster_composition[cluster] = {y: count for y, count in sorted_counter.items()}
     return cluster_composition
-
-def plot_cluster_composition(cluster_composition, tag):
+    
+def plot_cluster_composition(cluster_composition, mapping):
     cluster_labels = list(cluster_composition.keys())
     all_sub_labels = sorted({sub_label for comp in cluster_composition.values() for sub_label in comp.keys()})
-    
     composition_matrix = np.zeros((len(cluster_labels), len(all_sub_labels)))
-    
     for i, cluster in enumerate(cluster_labels):
         for j, sub_label in enumerate(all_sub_labels):
             composition_matrix[i, j] = cluster_composition[cluster].get(sub_label, 0)
-    
     fig, ax = plt.subplots(figsize=(12, 8))
-    
     colors = plt.cm.jet(np.linspace(0, 1, len(all_sub_labels)))
-    
     bottom = np.zeros(len(cluster_labels))
     for j, sub_label in enumerate(all_sub_labels):
-        ax.bar(cluster_labels, composition_matrix[:, j], bottom=bottom, color=colors[j], label=sub_label)
+        ax.bar(cluster_labels, composition_matrix[:, j], bottom=bottom, color=colors[j], label=mapping[sub_label])
         bottom += composition_matrix[:, j]
-    
     ax.set_xlabel('Clusters')
     ax.set_ylabel('Cell count')
     ax.set_title('Cluster Composition')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xticks(cluster_labels)
     plt.grid(True)
-    plt.savefig(f'{tag}.png', bbox_inches='tight')
+    plt.savefig('cluster_composition.png', bbox_inches='tight')
     plt.show()
 
-def get_redux(X, Y, mapping):
-    mapping = {y: x for x, y in mapping.items()}
-    
-    pca = PCA(n_components=10)
-    pca_result = pca.fit_transform(X)
-    
-    reducer = UMAP(n_neighbors=100, n_components=2, random_state=42)
-    embedding = reducer.fit_transform(pca_result)
-
-    plt.figure(figsize=(10, 8))
-
-    unique_targets = np.unique(Y)
-    colors = plt.cm.jet(np.linspace(0, 1, len(unique_targets)))
-    markersize_scatter = 0.1  
-    markersize_legend = 10  
-
-    for target, color in zip(unique_targets, colors):
-        indices = np.where(Y == target)
-        plt.scatter(embedding[indices, 0], embedding[indices, 1], color=color, label=mapping[target], s=markersize_scatter)
-
-    plt.title('UMAP - 2D projection of PCA reduced embedding')
-    plt.xlabel('UMAP 1')
-    plt.ylabel('UMAP 2')
-
-    handles = [Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=markersize_legend, label=mapping[target])
-               for target, color in zip(unique_targets, colors)]
-    
-    plt.legend(handles=handles, loc='center left', bbox_to_anchor=(1, 0.5))
-    plt.grid(True)
-    plt.savefig('pca_umap.png', bbox_inches='tight')
-    plt.show()
-
-
-def get_pie_chart(data, cluster_id, mapping):
-    data = data[cluster_id]
-    # Grouping data under 1% into 'Others'
-    threshold = 0.01 * sum(data.values())
-    grouped_data = {k: v for k, v in data.items() if v >= threshold}
-    others_value = sum(v for v in data.values() if v < threshold)
+def get_pie_chart(cluster_data, mapping, min_pct=1):
+    total = sum(cluster_data.values())
+    sorted_cluster_data = {k: v for k, v in sorted(cluster_data.items(), key=lambda item: item[1], reverse=True)}
+    top_labels, top_values, others_value = [], [], 0
+    for label, value in sorted_cluster_data.items():
+        percentage = (value / total) * 100
+        if percentage < min_pct:
+            others_value += value
+        else:
+            top_labels.append(mapping[label])
+            top_values.append(value)
     if others_value > 0:
-        grouped_data['Others'] = others_value
-
-    # Get the color map
+        top_labels.append('Others')
+        top_values.append(others_value)
     jet = plt.get_cmap('jet')
-    norm = plt.Normalize(1, 34)
-    colors = {key: jet(norm(value)) for key, value in mapping.items()}
-    colors['Others'] = 'gray'
-
-    # Pie chart with grouped data and custom colors
-    labels = list(grouped_data.keys())
-    sizes = list(grouped_data.values())
-    color_list = [colors[label] for label in labels]
-
-    plt.figure(figsize=(10, 8))
-    plt.pie(sizes, labels=labels, colors=color_list, autopct='%1.1f%%', startangle=140)
-    plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-    plt.savefig(f'pie_chart_cluster{cluster_id}.png', bbox_inches='tight')
-    plt.show()
-
-def get_pie_chart(data, cluster_id, mapping):
-    data = data[cluster_id]
-    # Grouping data under 1% into 'Others'
-    threshold = 0.01 * sum(data.values())
-    grouped_data = {k: v for k, v in data.items() if v >= threshold}
-    others_value = sum(v for v in data.values() if v < threshold)
-    if others_value > 0:
-        grouped_data['Others'] = others_value
-
-    # Get the color map
-    jet = plt.get_cmap('jet')
-    norm = plt.Normalize(1, 34)
-    colors = {key: jet(norm(value)) for key, value in mapping.items()}
-    colors['Others'] = 'gray'
-
-    # Pie chart with grouped data and custom colors
-    labels = list(grouped_data.keys())
-    sizes = list(grouped_data.values())
-    color_list = [colors.get(label, 'gray') for label in labels]  # Use gray if label is not in the mapping
-
-    plt.figure(figsize=(10, 8))
-    plt.pie(sizes, labels=labels, colors=color_list, autopct='%1.1f%%', startangle=140)
-    plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
-    plt.savefig(f'pie_chart_cluster{cluster_id}.png', bbox_inches='tight')
+    norm = plt.Normalize(0, len(top_labels))
+    colors = [jet(norm(i)) for i in range(len(top_labels))]
+    fig, ax = plt.subplots()
+    wedges, texts, autotexts = ax.pie(
+        top_values, labels=top_labels, autopct='%1.1f%%', colors=colors,
+        startangle=90, counterclock=False
+    )
+    plt.setp(autotexts, size=10, weight="bold", color="white")
+    plt.axis('equal')  
+    plt.savefig('pie_chart.png')
     plt.show()

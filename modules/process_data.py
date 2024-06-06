@@ -58,6 +58,12 @@ mapping2 = {'Multiplet': 1,
             'SampleTag20_flex': 5,
             'Undetermined': 6}
         
+def filter_cells_by_gene_counts(adata, min_genes=200, max_genes=6000):
+    nonzero_counts = (adata.X > 0).sum(axis=1)
+    cell_mask = (nonzero_counts >= min_genes) & (nonzero_counts <= max_genes)
+    filtered_adata = adata[cell_mask]
+    return filtered_adata
+
 def rm_high_mt(adata, threshold=0):
     mito_genes = [gene for gene in adata.var_names if gene.startswith('mt-')]
     total_counts = adata.X.sum(axis=1).A1 if isinstance(adata.X, np.matrix) else adata.X.sum(axis=1)
@@ -66,7 +72,7 @@ def rm_high_mt(adata, threshold=0):
     cells_to_keep = mito_percentage <= threshold
     return adata[cells_to_keep, :]
 
-def rm_low_exp(adata, threshold=0):
+def rm_low_exp(adata, threshold=0.05):
     nonzero_counts = np.array((adata.X != 0).sum(axis=0)).flatten()
     cell_count_threshold = (threshold / 100) * adata.shape[0]
     columns_to_keep = nonzero_counts >= cell_count_threshold

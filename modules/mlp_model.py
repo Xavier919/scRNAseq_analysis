@@ -58,7 +58,7 @@ class MLP(nn.Module):
     def forward(self, x):
         for i, layer in enumerate(self.layers[:-1]):
             x = layer(x)
-            x = self.batchnorms[i](x)
+            #x = self.batchnorms[i](x)
             x = self.activation(x)
             #x = self.dropout(x)  
         x = self.layers[-1](x)

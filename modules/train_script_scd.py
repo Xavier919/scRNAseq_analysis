@@ -48,9 +48,12 @@ if __name__ == "__main__":
     sc_df = sc_df[~sc_df['Sample_Tag'].isin(['Multiplet', 'Undetermined'])]
 
 
+    #sc_df = sc_df[sc_df['Sample_Tag'].isin(['SampleTag17_flex', 'SampleTag18_flex'])]
+
+
     X = sc_df.drop(['Sample_Tag', 'class_name'], axis=1).values
-    #Y = sc_df['Sample_Tag'].map(mapping2).astype(np.float32).values
-    Y = sc_df['class_name'].astype(np.float32).values
+    Y = sc_df['Sample_Tag'].map(mapping2).astype(np.float32).values
+    #Y = sc_df['class_name'].astype(np.float32).values
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
@@ -113,6 +116,6 @@ if __name__ == "__main__":
         else:
             no_improvement_count += 1  
 
-        if no_improvement_count >= 5:
+        if no_improvement_count >= 10:
             print("No improvement in validation accuracy for 5 consecutive epochs. Training stopped.")
             break

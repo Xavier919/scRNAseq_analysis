@@ -31,28 +31,28 @@ if __name__ == "__main__":
     adata1.obs['Sample_Tag'] = 1
     adata2 = anndata.read_h5ad("data/B_count.h5ad")
     adata2.obs['Sample_Tag'] = 2
-    adata3 = anndata.read_h5ad("data/C_count.h5ad")
-    adata3.obs['Sample_Tag'] = 3
-    adata4 = anndata.read_h5ad("data/D_count.h5ad")
-    adata4.obs['Sample_Tag'] = 4
-    adata = anndata.concat([adata1, adata2, adata3, adata4], axis=0)
+    #adata3 = anndata.read_h5ad("data/C_count.h5ad")
+    #adata3.obs['Sample_Tag'] = 3
+    #adata4 = anndata.read_h5ad("data/D_count.h5ad")
+    #adata4.obs['Sample_Tag'] = 4
+    #adata = anndata.concat([adata1, adata2, adata3, adata4], axis=0)
+    adata = anndata.concat([adata1, adata2], axis=0)
 
-    #adata = rm_low_exp(adata, threshold=0.05)
     #adata = rm_high_mt(adata, threshold=0.3)
+    #adata = rm_low_exp(adata, threshold=0.05)
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)
     sc.pp.scale(adata)
 
     anno_df1 = pd.read_csv("data/A_mapping.csv", skiprows=4)
     anno_df2 = pd.read_csv("data/B_mapping.csv", skiprows=4)
-    anno_df3 = pd.read_csv("data/C_mapping.csv", skiprows=4)
-    anno_df4 = pd.read_csv("data/D_mapping.csv", skiprows=4)
+    #anno_df3 = pd.read_csv("data/C_mapping.csv", skiprows=4)
+    #anno_df4 = pd.read_csv("data/D_mapping.csv", skiprows=4)
 
-    anno_df = pd.concat([anno_df1, anno_df2, anno_df3, anno_df4])
+    #anno_df = pd.concat([anno_df1, anno_df2, anno_df3, anno_df4])
+    anno_df = pd.concat([anno_df1, anno_df2])
     anno_df = anno_df.set_index('cell_id')[['class_name']]
     anno_df = anno_df['class_name'].map(mapping1)
-
-    del adata1, adata2, adata3, adata4, anno_df1, anno_df2, anno_df3, anno_df4
 
     sc_df = pd.DataFrame(adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X, index=adata.obs_names, columns=adata.var_names)
 
@@ -102,7 +102,6 @@ if __name__ == "__main__":
 
         base_net = DeepKAN(input_dim, shared_layers, num_knots, spline_order,
                         noise_scale, base_scale, spline_scale, activation, grid_epsilon, grid_range).to(device)
-
         siamese_model = SiameseKAN(base_net).to(device)
 
     optimizer = optim.RMSprop(siamese_model.parameters(), lr=args.lr)
