@@ -6,7 +6,8 @@ from statsmodels.stats.multitest import multipletests
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+import anndata
+import re
 
 def differential_expression_analysis(sc_df1, sc_df2):
     # Ensure that the indices and columns are strings
@@ -134,7 +135,7 @@ def get_volcano_plot(results_df, min_fold_change=1, max_p_value=0.05):
     plt.ylabel('-log10(p-value)')
     plt.show()
 
-def get_heatmap(results_df):
+def get_heatmap(results_df, sc_df1, sc_df2, display_top_n=100):
     deg = results_df[(results_df["pval_corrected"] < 0.05) & (results_df["log2foldchange"].abs() > 0.25)]['gene'].tolist()
 
     adata1 = anndata.AnnData(X=sc_df1.loc[:, deg].values, obs=pd.DataFrame(index=sc_df1.index), var=pd.DataFrame(index=deg))
@@ -146,14 +147,19 @@ def get_heatmap(results_df):
     sc.pp.scale(combined_adata)
     
     mean_expr = combined_adata.to_df().groupby(combined_adata.obs['batch']).mean().T
-    mean_expr['abs_diff_to_min'] = (mean_expr['3xTg-DMSO'] - mean_expr['WT-DMSO']).abs()
-    mean_expr_sorted = mean_expr.sort_values(by='abs_diff_to_min', ascending=False).drop(columns='abs_diff_to_min')
+    mean_expr['diff'] = mean_expr['3xTg-DMSO'] - mean_expr['WT-DMSO']
+    mean_expr_sorted = mean_expr.sort_values(by='diff', ascending=False)
+    
+    # Select top 100 positive and negative DEGs
+    top_pos = mean_expr_sorted[mean_expr_sorted['diff'] > 0][:display_top_n]
+    top_neg = mean_expr_sorted[mean_expr_sorted['diff'] < 0][:display_top_n]
+    mean_expr_sorted = pd.concat([top_pos, top_neg])
     
     sns.set(context='notebook', font_scale=1.2)
-    cg = sns.clustermap(mean_expr_sorted, cmap='coolwarm', linewidths=.5, figsize=(10, 15), row_cluster=True, col_cluster=False)
+    cg = sns.clustermap(mean_expr_sorted.drop(columns='diff'), cmap='coolwarm', linewidths=.5, figsize=(10, 15), row_cluster=True, col_cluster=False)
     
     cg.ax_heatmap.set_yticks(range(len(mean_expr_sorted.index)))
-    cg.ax_heatmap.set_yticklabels(mean_expr_sorted.index, rotation=0, fontsize=10)
+    cg.ax_heatmap.set_yticklabels(mean_expr_sorted.index, rotation=0, fontsize=4)
     cg.ax_heatmap.yaxis.set_label_position('right')
     cg.ax_heatmap.yaxis.tick_right()
     
@@ -167,3 +173,52 @@ def get_heatmap(results_df):
         tick.set_rotation(0)
     
     plt.show()
+
+
+def display_go_enrichment(tsv_file_path):
+    df = pd.read_csv(tsv_file_path, delimiter='\t', skiprows=11)
+    df['upload_1 (fold Enrichment)'] = pd.to_numeric(df['upload_1 (fold Enrichment)'], errors='coerce')
+    df['upload_1 (FDR)'] = pd.to_numeric(df['upload_1 (FDR)'], errors='coerce')
+
+    df = df.dropna(subset=['upload_1 (fold Enrichment)', 'upload_1 (FDR)'])
+    df = df[df['upload_1 (fold Enrichment)'] >= 5]
+
+    df['-log10(FDR)'] = -np.log10(df['upload_1 (FDR)'])
+    top_processes = df.nlargest(20, '-log10(FDR)')
+
+    top_processes['GO biological process complete'] = top_processes['GO biological process complete'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
+    top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
+
+    plt.figure(figsize=(10, 8))
+    norm = plt.Normalize(top_processes['-log10(FDR)'].min(), top_processes['-log10(FDR)'].max())
+    colors = plt.cm.viridis(norm(top_processes['-log10(FDR)']))
+    bars = plt.barh(top_processes['GO biological process complete'], top_processes['upload_1 (fold Enrichment)'], color=colors)
+
+    plt.xlabel('Fold Enrichment')
+    plt.ylabel('Biological Process')
+    plt.gca().invert_yaxis()  # To display the highest -log10(FDR) at the top
+
+    sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=plt.gca())
+    cbar.ax.set_title('-log10(FDR)', pad=20)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def dump_deg(results_df):
+    """
+    This function takes a DataFrame of differential expression results, 
+    extracts the positively and negatively differentially expressed genes 
+    (DEGs) based on certain criteria, and writes these gene names to two 
+    separate files.
+    """
+    positive_deg = [x.upper() + '\n' for x in results_df[(results_df["pval_corrected"] < 0.05) & (results_df["log2foldchange"] > 0.25)]['gene'].tolist()]
+    negative_deg = [x.upper() + '\n' for x in results_df[(results_df["pval_corrected"] < 0.05) & (results_df["log2foldchange"] <= -0.25)]['gene'].tolist()]
+
+    with open('DEG/DEG_positive_list', 'w') as file:
+        file.writelines(positive_deg)
+
+    with open('DEG/DEG_negative_list', 'w') as file:
+        file.writelines(negative_deg)
