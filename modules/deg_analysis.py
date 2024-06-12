@@ -9,133 +9,78 @@ import seaborn as sns
 import anndata
 import re
 
-def differential_expression_analysis(sc_df1, sc_df2):
-    # Ensure that the indices and columns are strings
-    sc_df1.index = sc_df1.index.astype(str)
-    sc_df2.index = sc_df2.index.astype(str)
-    sc_df1.columns = sc_df1.columns.astype(str)
-    sc_df2.columns = sc_df2.columns.astype(str)
+def DEG_analysis(adata, ctr, cnd, cell_type):
+    subset_adata = adata[adata.obs['annotated_cluster'].isin(cell_type)].copy()
+    subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
+    subset_adata_raw = subset_adata.raw.to_adata().copy()
+    sc.pp.normalize_total(subset_adata_raw, target_sum=1, exclude_highly_expressed=True, max_fraction=0.05)
+    subset_adata_raw.obs['Sample_Tag'] = subset_adata_raw.obs['Sample_Tag'].astype('category')
+    sc.tl.rank_genes_groups(subset_adata_raw, groupby='Sample_Tag', reference=ctr, method='wilcoxon', corr_method='benjamini-hochberg')
+    de_results_df = sc.get.rank_genes_groups_df(subset_adata_raw, group=cnd)
+    return de_results_df
 
-    # Combine the data into a single DataFrame and ensure the data is float
-    count_data = pd.concat([sc_df1, sc_df2], axis=0).astype(float)
+def horizontal_deg_chart(data, fig_tag):
+    # Convert data to DataFrame
+    df = pd.DataFrame(data, columns=['Category', 'Positive', 'Negative'])
+    # Make negative values for Negative DEGs
+    df['Negative'] = -df['Negative']
+    # Plotting
+    fig, ax = plt.subplots(figsize=(10, 8))
+    # Plot the bars
+    ax.barh(df['Category'], df['Positive'], color='red', label='Positive DEGs')
+    ax.barh(df['Category'], df['Negative'], color='blue', label='Negative DEGs')
+    # Add labels
+    ax.set_xlabel('Number of DEGs')
+    ax.set_ylabel('Clusters')
+    ax.legend()
+    # Draw vertical line at zero
+    ax.axvline(x=0, color='black', linewidth=0.8)
+    # Set x-axis limits to center at zero and show 250 on both sides
+    ax.set_xlim(-250, 250)
+    # Remove negative sign from x-axis labels
+    x_labels = ax.get_xticks()
+    ax.set_xticklabels([abs(int(x)) for x in x_labels])
+    plt.savefig(f'figures/DEG_horizontal_chart_{fig_tag}.png')
+    plt.show()
 
-    # Create a sample information DataFrame with condition labels
-    sample_info = pd.DataFrame({
-        'condition': ['WT'] * sc_df1.shape[0] + ['TG'] * sc_df2.shape[0]
-    }, index=count_data.index)
-
-    # Ensure the sample_info index is a string
-    sample_info.index = sample_info.index.astype(str)
-
-    # Create an AnnData object with count data and sample information
-    adata = sc.AnnData(count_data.values, obs=sample_info)
-
-    # Set the variable names (gene names)
-    adata.var_names = count_data.columns.astype(str)
-
-    # Set the observation names (sample names)
-    adata.obs_names = count_data.index.astype(str)
-
-    # Store the raw data in the .raw attribute before transformation
-    adata.raw = adata.copy()
-
-    # Initialize lists to store the gene names, fold changes, and p-values
-    gene_names = []
-    log2_fold_changes = []
-    p_values = []
-
-    # Perform differential expression analysis gene by gene
-    for gene in tqdm(adata.var_names):
-        # Extract expression values for the gene
-        expr_values = adata[:, gene].X
-
-        # Split expression values by condition
-        expr_values_WT = expr_values[adata.obs['condition'] == 'WT']
-        expr_values_TG = expr_values[adata.obs['condition'] == 'TG']
-
-        # Perform Wilcoxon rank-sum test
-        stat, p_value = ranksums(expr_values_WT, expr_values_TG)
-
-        # Calculate mean expression values
-        mean_WT = np.mean(expr_values_WT)
-        mean_TG = np.mean(expr_values_TG)
-
-        # Calculate log2 fold change
-        if mean_WT > 0 and mean_TG > 0:
-            log2_fold_change = np.log2(mean_TG / mean_WT)
-        else:
-            log2_fold_change = np.nan  # Handle cases where the mean is zero
-
-        # Store the results
-        gene_names.append(gene)
-        log2_fold_changes.append(log2_fold_change)
-        p_values.append(p_value)
-
-    # Convert p-values list to a NumPy array
-    p_values = np.array(p_values).reshape(-1)
-
-    # Perform Benjamini-Hochberg correction
-    _, p_values_corrected, _, _ = multipletests(p_values, method='fdr_bh')
-
-    # Calculate log10 of corrected p-values
-    log10_pvals_corrected = -np.log10(np.maximum(p_values_corrected, 1e-300))
-
-    # Create a DataFrame with the results
-    results_df = pd.DataFrame({
-        'gene': gene_names,
-        'log2foldchange': log2_fold_changes,
-        'pval': p_values,
-        'pval_corrected': p_values_corrected,
-        'log10pval_corrected': log10_pvals_corrected
-    })
-
-    return results_df
-
-
-def get_volcano_plot(results_df, min_fold_change=1, max_p_value=0.05):
-    # Copy the DataFrame to avoid modifying the original one
+def get_volcano_plot(results_df, fig_tag, min_fold_change=0.26, max_p_value=0.05):
     df = results_df.copy()
 
-    # Identify significant results
-    df['significant'] = df['pval_corrected'] < max_p_value
+    df['log10pval_corrected'] = -np.log10(df['pvals_adj'].replace(0, np.nextafter(0, 1)))  # Replace 0s to avoid -inf
 
-    # Identify results outside the range
-    df['outside_range'] = df['significant'] & (df['log2foldchange'].abs() > min_fold_change)
+    df['significant'] = df['pvals_adj'] < max_p_value
 
-    # Assign colors based on the conditions
+    df['outside_range'] = df['significant'] & (df['logfoldchanges'].abs() > min_fold_change)
+
     df['color'] = 'grey'
-    df.loc[df['outside_range'] & (df['log2foldchange'] > 0), 'color'] = 'red'
-    df.loc[df['outside_range'] & (df['log2foldchange'] <= 0), 'color'] = 'blue'
+    df.loc[df['outside_range'] & (df['logfoldchanges'] > 0), 'color'] = 'red'
+    df.loc[df['outside_range'] & (df['logfoldchanges'] <= 0), 'color'] = 'blue'
 
-    # Create the plot
     plt.figure(figsize=(10, 6))
-    plt.scatter(df['log2foldchange'], df['log10pval_corrected'], s=5, c=df['color'])
+    plt.scatter(df['logfoldchanges'], df['log10pval_corrected'], s=5, c=df['color'])
 
-    # Add lines to the plot
     plt.axvline(x=-min_fold_change, color='black', linestyle='--', linewidth=0.5)
     plt.axvline(x=min_fold_change, color='black', linestyle='--', linewidth=0.5)
-    plt.axhline(y=0, color='black', linestyle='--', linewidth=0.5)
+    plt.axhline(y=-np.log10(max_p_value), color='black', linestyle='--', linewidth=0.5)
 
-    # Annotate the top 20 significant genes
     for _, row in df[df['outside_range']].nlargest(20, 'log10pval_corrected').iterrows():
-        plt.annotate(row['gene'], (row['log2foldchange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=7)
+        plt.annotate(row['names'], (row['logfoldchanges'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=7)
 
-    # Get the highest and lowest fold changes and the maximum p-value
-    high_fold_change = df['log2foldchange'].max()
-    low_fold_change = df['log2foldchange'].min()
+    high_fold_change = df['logfoldchanges'].max()
+    low_fold_change = df['logfoldchanges'].min()
     max_log10_pval = df['log10pval_corrected'].max()
 
-    # Annotate the number of differentially expressed genes (DEGs) in red and blue
     plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
     plt.annotate(f"{df[df['color'] == 'blue'].shape[0]} DEGs", xy=(low_fold_change, max_log10_pval), ha='left', va='top', fontsize=10, color='blue')
 
-    # Add grid, labels and show the plot
     plt.grid(True, which='both', linestyle='-', linewidth=0.5, color='gray', alpha=0.2)
     plt.xlabel('Log2 Fold Change')
     plt.ylabel('-log10(p-value)')
+    plt.title('Volcano plot')
+    plt.savefig(f'figures/volcano_plot_{fig_tag}.png')
     plt.show()
 
-def get_heatmap(results_df, sc_df1, sc_df2, display_top_n=100):
+def get_heatmap(results_df, sc_df1, sc_df2, display_top_n=100, fig_tag):
     deg = results_df[(results_df["pval_corrected"] < 0.05) & (results_df["log2foldchange"].abs() > 0.25)]['gene'].tolist()
 
     adata1 = anndata.AnnData(X=sc_df1.loc[:, deg].values, obs=pd.DataFrame(index=sc_df1.index), var=pd.DataFrame(index=deg))
@@ -171,7 +116,7 @@ def get_heatmap(results_df, sc_df1, sc_df2, display_top_n=100):
         tick.set_color('black')
         tick.set_ha('center')
         tick.set_rotation(0)
-    
+    plt.savefig(f'figures/deg_heatmap_{fig_tag}.png')
     plt.show()
 
 
