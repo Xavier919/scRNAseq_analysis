@@ -80,7 +80,7 @@ def get_volcano_plot(results_df, fig_tag, min_fold_change=0.26, max_p_value=0.05
     plt.savefig(f'figures/volcano_plot_{fig_tag}.png')
     plt.show()
 
-def get_heatmap(results_df, sc_df1, sc_df2, display_top_n=100, fig_tag):
+def get_heatmap(results_df, sc_df1, sc_df2, fig_tag, display_top_n=100):
     deg = results_df[(results_df["pval_corrected"] < 0.05) & (results_df["log2foldchange"].abs() > 0.25)]['gene'].tolist()
 
     adata1 = anndata.AnnData(X=sc_df1.loc[:, deg].values, obs=pd.DataFrame(index=sc_df1.index), var=pd.DataFrame(index=deg))
