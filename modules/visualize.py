@@ -18,7 +18,7 @@ import re
 from collections import defaultdict
 
 def elbow_plot(adata):
-    sc.tl.pca(adata, svd_solver='arpack')
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
     ax.bar(range(len(pca_variance_ratio)), pca_variance_ratio, alpha=0.6)
@@ -96,4 +96,70 @@ def get_ditto(sample_tag_counts):
     plt.gca().invert_yaxis()
     plt.tight_layout()
     plt.savefig('figures/ditto.png', bbox_inches='tight')
+    plt.show()
+
+def create_ditto_plot(adata, sample_tags, min_cell=50):
+    """
+    Creates a Ditto plot for the specified sample tags from an AnnData object.
+    
+    Parameters:
+        adata (anndata.AnnData): The input AnnData object containing the observations.
+        sample_tags (list of str): The sample tags for which to create the Ditto plot.
+        min_cell (int): Minimum number of cells required to be considered a separate class. Classes with fewer cells will be grouped into 'Others'.
+    """
+    # Extract relevant columns and create DataFrame
+    df = adata.obs[['Sample_Tag', 'class_name', 'annotated_cluster']]
+
+    # Identify valid classes and group others based on all sample tags
+    class_counts = df['class_name'].value_counts()
+    valid_classes = class_counts[class_counts >= min_cell].index
+
+    # Create color mapping for valid classes
+    colormap = plt.get_cmap('viridis')  # Use 'tab20' for more distinct colors
+    color_mapping = {class_name: colormap(i / len(valid_classes)) for i, class_name in enumerate(valid_classes)}
+
+    # Filter for the specified sample tags
+    df_filtered = df[df['Sample_Tag'].isin(sample_tags)]
+    df_filtered['class_name'] = df_filtered['class_name'].apply(lambda x: x if x in valid_classes else 'Others')
+
+    # Group by annotated_cluster and class_name, then count occurrences
+    counts = df_filtered.groupby(['annotated_cluster', 'class_name']).size().unstack(fill_value=0).fillna(0)
+
+    # Calculate percentages
+    percentages = counts.div(counts.sum(axis=1), axis=0) * 100
+
+    # Plotting the Ditto plot
+    plt.figure(figsize=(14, 8))
+
+    # Plot bars and add cell count text
+    for class_name in percentages.columns:
+        color = color_mapping.get(class_name, 'grey')  # Default to grey if class_name not found
+        bars = plt.barh(percentages.index, percentages[class_name], 
+                        left=percentages[percentages.columns[:percentages.columns.get_loc(class_name)]].sum(axis=1), 
+                        label=class_name, color=color)
+        for bar in bars:
+            width = bar.get_width()
+            cluster = bar.get_y()
+            if cluster in counts.index and class_name in counts.columns:
+                cell_count = int(counts.at[cluster, class_name])
+                plt.text(width, bar.get_y() + bar.get_height()/2, 
+                         f'{cell_count}', 
+                         va='center', ha='left')
+
+    # Labeling and title
+    plt.xlabel('Percentage')
+    plt.ylabel('Cluster')
+    plt.title(f'Clusters cell type composition - {", ".join(sample_tags)}')
+    
+    # Create a legend with only the valid classes
+    handles, labels = plt.gca().get_legend_handles_labels()
+    valid_handles = [handles[i] for i, label in enumerate(labels)]
+    valid_labels = [label for label in labels]
+    plt.legend(valid_handles, valid_labels, title='Class Name', bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+
+    # Save and show the plot
+    plt.savefig(f'figures/ditto_by_class_name_{"_".join(sample_tags)}.png', bbox_inches='tight')
     plt.show()

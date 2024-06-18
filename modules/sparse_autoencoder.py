@@ -22,7 +22,19 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
+import torch.nn.utils.prune as prune
+from typing import Callable, Dict, Any, Union
 
+def apply_pruning(model, amount=0.5):
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear) and module.in_features == model.encoder.in_features:
+            weight = module.weight.data
+            n_latents = weight.size(0)
+            for i in range(n_latents):
+                w = weight[i, :]
+                threshold = torch.quantile(w.abs(), amount)
+                mask = w.abs() >= threshold
+                w *= mask.float()
 
 def LN(x: torch.Tensor, eps: float = 1e-5) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     mu = x.mean(dim=-1, keepdim=True)
@@ -201,38 +213,55 @@ class Autoencoder(nn.Module):
             sd[prefix + "activation_state_dict"] = self.activation.state_dict()
         return sd
 
+# Function to evaluate the model on the test set
+def evaluate_autoencoder(autoencoder, dataloader, loss_fn):
+    autoencoder.eval()
+    test_loss = 0
+    with torch.no_grad():
+        for data in dataloader:
+            inputs = data[0].to(device)
+            _, latents, outputs = autoencoder(inputs)
+            loss = loss_fn(outputs, inputs)
+            test_loss += loss.item()
+    return test_loss / len(dataloader)
 
-def save_model(autoencoder: nn.Module, path: str) -> None:
-    """
-    Saves the autoencoder model state to the specified path.
+# Example training loop with pruning and test set evaluation
+def train_autoencoder(autoencoder, train_loader, test_loader, num_epochs=50, learning_rate=0.0001, prune_interval=5, prune_amount=0.5):
+    optimizer = torch.optim.Adam(autoencoder.parameters(), lr=learning_rate)
+    loss_fn = nn.MSELoss()
+    
+    # Variable to keep track of the best test loss
+    best_test_loss = float('inf')
+    
+    for epoch in range(num_epochs):
+        autoencoder.train()
+        for data in tqdm(train_loader):
+            inputs = data[0].to(device)
 
-    :param autoencoder: The trained autoencoder model
-    :param path: The file path to save the model state
-    """
-    state = {
-        'model_state': autoencoder.state_dict()
-    }
-    torch.save(state, path)
-    print(f"Model state saved to {path}")
+            # Forward pass
+            _, latents, outputs = autoencoder(inputs)
+            loss = loss_fn(outputs, inputs)
 
-def load_model(autoencoder: nn.Module, path: str) -> None:
-    """
-    Loads the autoencoder model state from the specified path.
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-    :param autoencoder: The autoencoder model instance
-    :param path: The file path from which to load the model state
-    """
-    state = torch.load(path)
-    model_state = state['model_state']
+        # Apply pruning at specified intervals
+        if (epoch + 1) % prune_interval == 0:
+            apply_pruning(autoencoder, amount=prune_amount)
+            print(f"Pruning applied at epoch {epoch + 1}")
 
-    # Handle activation state dict if it exists
-    if 'activation_state_dict' in model_state:
-        activation_state_dict = model_state.pop('activation_state_dict')
-        if hasattr(autoencoder.activation, 'load_state_dict'):
-            autoencoder.activation.load_state_dict(activation_state_dict)
+        # Evaluate on test set
+        test_loss = evaluate_autoencoder(autoencoder, test_loader, loss_fn)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}, Test Loss: {test_loss}")
 
-    autoencoder.load_state_dict(model_state)
-    print(f"Model state loaded from {path}")
+        # Check if the current test loss is the best we've seen so far
+        if test_loss < best_test_loss:
+            best_test_loss = test_loss
+            # Save the model
+            torch.save(autoencoder.state_dict(), 'best_autoencoder.pth')
+            print(f"Saved new best model with test loss: {best_test_loss}")
 
 
 # Define a custom dataset class for AnnData
@@ -247,50 +276,6 @@ class AnnDataDataset(Dataset):
         # Convert data to a tensor and ensure the label is a compatible type
         x = torch.tensor(self.adata.X[idx].toarray(), dtype=torch.float32)
         return x
-
-
-def perform_go_enrichment(gene_list, background_genes):
-    """
-    Perform GO enrichment analysis.
-
-    Parameters:
-    gene_list (list): List of gene IDs to analyze.
-    background_genes (list): List of background gene IDs.
-
-    Returns:
-    pandas.DataFrame: A DataFrame containing the significant GO enrichment results.
-    """
-    obodag = GODag("DEG/go-basic.obo")
-    objanno = Gene2GoReader("DEG/gene2go", taxids=[10090])
-    ns2assoc = objanno.get_ns2assc()
-    
-    goeaobj = GOEnrichmentStudyNS(
-        background_genes, 
-        ns2assoc, 
-        obodag, 
-        propagate_counts=False,
-        alpha=0.05, 
-        methods=['fdr_bh']
-    )
-    
-    goea_results_all = goeaobj.run_study(gene_list)
-    goea_results_sig = [r for r in goea_results_all if r.p_fdr_bh < 0.05]
-    
-    df_results = pd.DataFrame([{
-        'GO_ID': r.GO,
-        'GO_term': r.name,
-        'namespace': r.NS,
-        'study_count': r.study_count,
-        'population_count': r.pop_count,
-        'study_items': list(r.study_items),
-        'population_items': list(r.pop_items),
-        'p_uncorrected': r.p_uncorrected,
-        'p_fdr_bh': r.p_fdr_bh,
-        'fold_enrichment': (r.study_count / len(gene_list)) / (r.pop_count / len(background_genes)),
-        'enrichment': 'enriched' if r.enrichment else 'purified'
-    } for r in goea_results_sig])
-    
-    return df_results
 
 
 def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, feature_range=(0, 1), num_cells=500):
@@ -325,12 +310,6 @@ def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, feature_rang
     if latents_np_scaled.shape[0] > num_cells:
         indices = np.random.choice(latents_np_scaled.shape[0], num_cells, replace=False)
         latents_np_scaled = latents_np_scaled[indices]
-    
-    # Verification of scaling
-    min_values = np.min(latents_np_scaled, axis=0)
-    max_values = np.max(latents_np_scaled, axis=0)
-    #print(f'Min values after scaling: {min_values}')
-    #print(f'Max values after scaling: {max_values}')
     
     # Create a heatmap
     plt.figure(figsize=(8, 6))
@@ -457,13 +436,13 @@ def plot_gene_reconstruction(autoencoder, data, gene_idx=0):
 
 def plot_top_contributing_genes(autoencoder, adata, latent_dim=0, top_n=10):
     """
-    Plot the top contributing genes for a specific latent dimension of the autoencoder.
+    Plot the top positive and negative contributing genes for a specific latent dimension of the autoencoder.
 
     Parameters:
     autoencoder (nn.Module): The trained autoencoder model.
     adata (anndata.AnnData): The annotated data matrix containing gene names.
     latent_dim (int): The latent dimension to visualize. Default is 0.
-    top_n (int): The number of top contributing genes to plot. Default is 10.
+    top_n (int): The number of top contributing genes to plot for both positive and negative contributions. Default is 10.
     """
     # Extract encoder weights
     encoder_weights = autoencoder.encoder.weight.detach().numpy()
@@ -471,11 +450,52 @@ def plot_top_contributing_genes(autoencoder, adata, latent_dim=0, top_n=10):
     # Create a DataFrame for easier plotting
     df = pd.DataFrame(encoder_weights.T, index=adata.var_names)
     
-    # Plot top contributing genes for the specified latent dimension
-    top_genes = df.iloc[:, latent_dim].sort_values(ascending=False).head(top_n)
-    plt.figure(figsize=(8, 5))
-    top_genes.plot(kind='bar')
+    # Get top positive contributing genes
+    top_positive_genes = df.iloc[:, latent_dim].sort_values(ascending=False).head(top_n)
+    
+    # Get top negative contributing genes
+    top_negative_genes = df.iloc[:, latent_dim].sort_values(ascending=True).head(top_n)
+    
+    # Concatenate top positive and negative genes
+    top_genes = pd.concat([top_positive_genes, top_negative_genes])
+    
+    # Plot
+    plt.figure(figsize=(10, 6))
+    top_genes.plot(kind='bar', color=['blue' if w > 0 else 'red' for w in top_genes])
     plt.xlabel('Genes')
     plt.ylabel('Contribution weight')
     plt.title(f'Top contributing genes for latent dimension {latent_dim}')
     plt.show()
+
+
+def get_top_genes(autoencoder, adata, top_n=10):
+    """
+    Get the top positive and negative contributing genes for each latent dimension of the autoencoder.
+
+    Parameters:
+    autoencoder (nn.Module): The trained autoencoder model.
+    adata (anndata.AnnData): The annotated data matrix containing gene names.
+    top_n (int): The number of top contributing genes to return for both positive and negative contributions. Default is 10.
+
+    Returns:
+    dict: A dictionary where each key is a latent dimension, and the value is another dictionary with 'positive' and 'negative' keys containing lists of top contributing genes.
+    """
+    # Extract encoder weights
+    encoder_weights = autoencoder.encoder.weight.detach().numpy()
+    gene_names = adata.var_names
+
+    top_genes = {}
+    for i in range(encoder_weights.shape[0]):
+        # Create a DataFrame for easier sorting
+        df = pd.DataFrame(encoder_weights[i], index=gene_names, columns=['weight'])
+
+        # Get top positive and negative contributing genes
+        top_positive_genes = df[df['weight'] > 0].nlargest(top_n, 'weight').index.tolist()
+        top_negative_genes = df[df['weight'] < 0].nsmallest(top_n, 'weight').index.tolist()
+
+        top_genes[i] = {
+            'positive': top_positive_genes,
+            'negative': top_negative_genes
+        }
+
+    return top_genes
