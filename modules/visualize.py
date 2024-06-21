@@ -42,12 +42,12 @@ def dimension_heatmap(adata, n_components=15, n_cells=500):
     plt.savefig('figures/dimension_heatmap.png')
     plt.show()
 
-def plot_umap(adata, sample_tags, legend_fontsize=5):
+def plot_umap(adata, sample_tags, cluster_type='cluster_class_name', legend_fontsize=5):
     for tag in sample_tags:
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
         sc.pl.umap(
             adata_subset,
-            color=['annotated_cluster'],
+            color=[cluster_type],
             size=20,
             title=f'{tag}',
             save=f'umap_{tag}.png',
@@ -59,12 +59,12 @@ def plot_umap(adata, sample_tags, legend_fontsize=5):
 def remove_numbers(cell_type):
     return re.sub(r'^\d+\s+', '', cell_type)
 
-def assign_unique_cell_type_names(adata, cluster_key='leiden', cell_type_key='class_name'):
+def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_type='class_name'):
     cluster_annotations = {}
     cell_type_counter = defaultdict(int)
     
     for cluster in adata.obs[cluster_key].unique():
-        most_common_cell_type = adata.obs[adata.obs[cluster_key] == cluster][cell_type_key].mode()[0]
+        most_common_cell_type = adata.obs[adata.obs[cluster_key] == cluster][cluster_type].mode()[0]
         cleaned_cell_type = remove_numbers(most_common_cell_type)
         
         cell_type_counter[cleaned_cell_type] += 1
@@ -72,33 +72,16 @@ def assign_unique_cell_type_names(adata, cluster_key='leiden', cell_type_key='cl
         
         cluster_annotations[cluster] = unique_cell_type
     
-    adata.obs['annotated_cluster'] = adata.obs[cluster_key].map(cluster_annotations)
+    adata.obs[f'cluster_{cluster_type}'] = adata.obs[cluster_key].map(cluster_annotations)
 
-def get_master_table(adata):
-    merged_df = adata.obs[['Sample_Tag', 'annotated_cluster']]
-    result_df = merged_df.groupby('annotated_cluster').size().reset_index(name='total_count')
-    sample_tag_counts = merged_df.groupby(['annotated_cluster', 'Sample_Tag']).size().unstack(fill_value=0)
+def get_master_table(adata, cluster_type='cluster_class_name'):
+    merged_df = adata.obs[['Sample_Tag', cluster_type]]
+    result_df = merged_df.groupby(cluster_type).size().reset_index(name='total_count')
+    sample_tag_counts = merged_df.groupby([cluster_type, 'Sample_Tag']).size().unstack(fill_value=0)
     sample_tag_counts.to_csv('figures/sample_tag_counts.csv')
     return sample_tag_counts
 
-def get_ditto(sample_tag_counts):
-    sample_tag_percentages = sample_tag_counts.div(sample_tag_counts.sum(axis=1), axis=0) * 100
-    plt.figure(figsize=(14, 8))
-    colormap = plt.get_cmap('viridis')
-    for i, tag in enumerate(sample_tag_percentages.columns):
-        plt.barh(sample_tag_percentages.index, sample_tag_percentages[tag], 
-                 left=sample_tag_percentages[sample_tag_percentages.columns[:i]].sum(axis=1), 
-                 label=tag, color=colormap(i / len(sample_tag_percentages.columns)))
-    plt.xlabel('Percentage')
-    plt.ylabel('Cluster')
-    plt.title('Clusters sample tag %')
-    plt.legend(title='Sample Tag', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig('figures/ditto.png', bbox_inches='tight')
-    plt.show()
-
-def create_ditto_plot(adata, sample_tags, min_cell=50):
+def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50):
     """
     Creates a Ditto plot for the specified sample tags from an AnnData object.
     
@@ -108,22 +91,22 @@ def create_ditto_plot(adata, sample_tags, min_cell=50):
         min_cell (int): Minimum number of cells required to be considered a separate class. Classes with fewer cells will be grouped into 'Others'.
     """
     # Extract relevant columns and create DataFrame
-    df = adata.obs[['Sample_Tag', 'class_name', 'annotated_cluster']]
+    df = adata.obs[['Sample_Tag', class_level, cluster_type]]
 
     # Identify valid classes and group others based on all sample tags
-    class_counts = df['class_name'].value_counts()
+    class_counts = df[class_level].value_counts()
     valid_classes = class_counts[class_counts >= min_cell].index
 
     # Create color mapping for valid classes
-    colormap = plt.get_cmap('viridis')  # Use 'tab20' for more distinct colors
+    colormap = plt.get_cmap('tab20')  # Use 'tab20' for more distinct colors
     color_mapping = {class_name: colormap(i / len(valid_classes)) for i, class_name in enumerate(valid_classes)}
 
     # Filter for the specified sample tags
     df_filtered = df[df['Sample_Tag'].isin(sample_tags)]
-    df_filtered['class_name'] = df_filtered['class_name'].apply(lambda x: x if x in valid_classes else 'Others')
+    df_filtered[class_level] = df_filtered[class_level].apply(lambda x: x if x in valid_classes else 'Others')
 
     # Group by annotated_cluster and class_name, then count occurrences
-    counts = df_filtered.groupby(['annotated_cluster', 'class_name']).size().unstack(fill_value=0).fillna(0)
+    counts = df_filtered.groupby([cluster_type, class_level]).size().unstack(fill_value=0).fillna(0)
 
     # Calculate percentages
     percentages = counts.div(counts.sum(axis=1), axis=0) * 100

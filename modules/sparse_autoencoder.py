@@ -24,6 +24,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 import torch.nn.utils.prune as prune
 from typing import Callable, Dict, Any, Union
+from tqdm import tqdm
 
 def apply_pruning(model, amount=0.5):
     for name, module in model.named_modules():
@@ -214,7 +215,7 @@ class Autoencoder(nn.Module):
         return sd
 
 # Function to evaluate the model on the test set
-def evaluate_autoencoder(autoencoder, dataloader, loss_fn):
+def evaluate_autoencoder(autoencoder, dataloader, loss_fn, device):
     autoencoder.eval()
     test_loss = 0
     with torch.no_grad():
@@ -226,7 +227,7 @@ def evaluate_autoencoder(autoencoder, dataloader, loss_fn):
     return test_loss / len(dataloader)
 
 # Example training loop with pruning and test set evaluation
-def train_autoencoder(autoencoder, train_loader, test_loader, num_epochs=50, learning_rate=0.0001, prune_interval=5, prune_amount=0.5):
+def train_autoencoder(autoencoder, train_loader, test_loader, device, num_epochs=50, learning_rate=0.0001, prune_interval=5, prune_amount=0.5):
     optimizer = torch.optim.Adam(autoencoder.parameters(), lr=learning_rate)
     loss_fn = nn.MSELoss()
     
@@ -253,7 +254,7 @@ def train_autoencoder(autoencoder, train_loader, test_loader, num_epochs=50, lea
             print(f"Pruning applied at epoch {epoch + 1}")
 
         # Evaluate on test set
-        test_loss = evaluate_autoencoder(autoencoder, test_loader, loss_fn)
+        test_loss = evaluate_autoencoder(autoencoder, test_loader, loss_fn, device)
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}, Test Loss: {test_loss}")
 
         # Check if the current test loss is the best we've seen so far
@@ -278,15 +279,16 @@ class AnnDataDataset(Dataset):
         return x
 
 
-def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, feature_range=(0, 1), num_cells=500):
+def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, clusters=None, subclusters=None, num_cells=500):
     """
-    Plots a heatmap of latent activations, optionally displaying only specific sample tags.
+    Plots a heatmap of latent activations, optionally displaying only specific sample tags or a specific cluster.
     
     Parameters:
     - autoencoder: Trained autoencoder model.
     - data: Input data to be encoded.
     - adata: AnnData object containing the observations.
     - sample_tags: List of specific sample tags to display. If None, displays all.
+    - cluster: Specific cluster to display. If None, displays all.
     - feature_range: Desired range of transformed data.
     - num_cells: Number of cells to display in the heatmap. Default is 500.
     """
@@ -295,16 +297,21 @@ def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, feature_rang
     with torch.no_grad():
         latents, _ = autoencoder.encode(data)
     latents_np = latents.detach().cpu().numpy()
-    sample_tags_all = adata.obs['Sample_Tag']
     
     # Scale each latent dimension separately to the range [0, 1]
-    scaler = MinMaxScaler(feature_range=feature_range)
+    scaler = MinMaxScaler(feature_range=(0, 1))
     latents_np_scaled = scaler.fit_transform(latents_np)
     
-    # Filter sample tags if provided
+    # Filter by sample tags and cluster if provided
+    mask = np.ones(len(adata.obs), dtype=bool)
     if sample_tags:
-        mask_sample_tags = sample_tags_all.isin(sample_tags)
-        latents_np_scaled = latents_np_scaled[mask_sample_tags]
+        mask &= adata.obs['Sample_Tag'].isin(sample_tags)
+    if clusters:
+        mask &= adata.obs['cluster_class_name'].isin(clusters)
+    if subclusters:
+        mask &= adata.obs['cluster_subclass_name'].isin(subclusters)
+    
+    latents_np_scaled = latents_np_scaled[mask]
     
     # Randomly sample cells if there are more than num_cells
     if latents_np_scaled.shape[0] > num_cells:
@@ -318,6 +325,7 @@ def plot_latent_heatmap(autoencoder, data, adata, sample_tags=None, feature_rang
     plt.ylabel('Cells')
     plt.title('Heatmap of latent activations')
     plt.show()
+
 
 
 def plot_umap_embedding(embedding, adata, sample_tags=None, min_count=100):
@@ -465,6 +473,7 @@ def plot_top_contributing_genes(autoencoder, adata, latent_dim=0, top_n=10):
     plt.xlabel('Genes')
     plt.ylabel('Contribution weight')
     plt.title(f'Top contributing genes for latent dimension {latent_dim}')
+    plt.savefig(f'figures/top_contributing_{latent_dim}')
     plt.show()
 
 

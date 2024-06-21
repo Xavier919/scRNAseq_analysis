@@ -14,6 +14,8 @@ from goatools.obo_parser import GODag
 from goatools.anno.genetogo_reader import Gene2GoReader
 from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE_GENEID2NT
 import mygene
+import rpy2.robjects as ro
+from rpy2.robjects import pandas2ri
 
 def query_genes(adata):
     reference_list = adata.var.index.str.upper().tolist()
@@ -79,7 +81,7 @@ def DEG_analysis(adata, ctr, cnd, cell_type):
         de_results_df (pd.DataFrame): DataFrame containing the differential expression results or None if there are insufficient samples.
     """
     # Subset the AnnData object for the specified cell types
-    subset_adata = adata[adata.obs['annotated_cluster'].isin(cell_type)].copy()
+    subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
     
     # Further subset the data for the specified control and condition groups
     subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
@@ -107,6 +109,86 @@ def DEG_analysis(adata, ctr, cnd, cell_type):
     
     return de_results_df
 
+def DEG_analysis_deseq2(adata, ctr, cnd, cell_type):
+    """
+    Performs differential expression analysis using DESeq2 for specified cell types between control and condition groups.
+    
+    Parameters:
+        adata (anndata.AnnData): The input AnnData object containing the observations.
+        ctr (str): The control sample tag.
+        cnd (str): The condition sample tag.
+        cell_type (list of str): The list of cell types to be included in the analysis.
+    
+    Returns:
+        de_results_df (pd.DataFrame): DataFrame containing the differential expression results or None if there are insufficient samples.
+    """
+
+    # Activate pandas to R conversion
+    pandas2ri.activate()
+
+    # Ensure necessary R packages are installed and loaded
+    ro.r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
+    ro.r('BiocManager::install("DESeq2", update=FALSE)')
+    ro.r('library(DESeq2)')
+
+    # Subset the AnnData object for the specified cell types
+    subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
+    
+    # Further subset the data for the specified control and condition groups
+    subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
+    
+    # Check if each group has at least two samples
+    group_counts = subset_adata.obs['Sample_Tag'].value_counts()
+    if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
+        print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
+        return None
+
+    # Extract raw counts
+    counts = subset_adata.raw.X.toarray()
+    counts = pd.DataFrame(counts, index=subset_adata.obs_names, columns=subset_adata.raw.var_names)
+    
+    # Create metadata
+    metadata = subset_adata.obs[['Sample_Tag']]
+    
+    # Print shapes for debugging
+    print("Counts shape:", counts.shape)
+    print("Metadata shape:", metadata.shape)
+    
+    # Convert data to R format
+    r_counts = pandas2ri.py2rpy(counts.T)  # Transpose counts for DESeq2
+    r_metadata = pandas2ri.py2rpy(metadata)
+    
+    # Run DESeq2
+    deseq2_script = """
+    library(DESeq2)
+    
+    run_deseq2 <- function(counts, metadata, control, condition) {
+        dds <- DESeqDataSetFromMatrix(countData = counts,
+                                      colData = metadata,
+                                      design = ~ Sample_Tag)
+        dds <- dds[ rowSums(counts(dds)) > 1, ]
+        dds$Sample_Tag <- relevel(dds$Sample_Tag, ref = control)
+        
+        # Estimate size factors using an alternative method
+        geoMeans <- apply(counts(dds), 1, function(x) exp(mean(log(x[x > 0]), na.rm = TRUE)))
+        dds <- estimateSizeFactors(dds, geoMeans=geoMeans)
+        
+        dds <- DESeq(dds)
+        res <- results(dds, contrast=c("Sample_Tag", condition, control))
+        res_df <- as.data.frame(res)
+        return(res_df)
+    }
+    """
+    ro.r(deseq2_script)
+    
+    run_deseq2 = ro.globalenv['run_deseq2']
+    res_r = run_deseq2(r_counts, r_metadata, ctr, cnd)
+    
+    # Convert results back to pandas DataFrame
+    de_results_df = pandas2ri.rpy2py(res_r)
+    
+    return de_results_df
+
 def horizontal_deg_chart(data, fig_tag):
     # Convert data to DataFrame
     df = pd.DataFrame(data, columns=['Category', 'Positive', 'Negative'])
@@ -128,35 +210,35 @@ def horizontal_deg_chart(data, fig_tag):
     # Remove negative sign from x-axis labels
     x_labels = ax.get_xticks()
     ax.set_xticklabels([abs(int(x)) for x in x_labels])
-    plt.savefig(f'figures/DEG_horizontal_chart_{fig_tag}.png')
+    plt.savefig(f'figures/DEG_horizontal_chart_{fig_tag}.png', bbox_inches='tight')
     plt.show()
 
 def get_volcano_plot(results_df, fig_tag, min_fold_change=1, max_p_value=0.01):
     df = results_df.copy()
 
     # Exclude genes with fold change outside of -10, 10
-    df = df[(df['logfoldchanges'] >= -10) & (df['logfoldchanges'] <= 10)]
+    df = df[(df['log2FoldChange'] >= -10) & (df['log2FoldChange'] <= 10)]
 
     # Remove genes with adjusted p-value of 0
-    df = df[df['pvals_adj'] != 0]
+    df = df[df['padj'] != 0]
 
     # Calculate -log10 of adjusted p-values
-    df['log10pval_corrected'] = -np.log10(df['pvals_adj'])
+    df['log10pval_corrected'] = -np.log10(df['padj'])
 
     # Identify significant genes
-    df['significant'] = df['pvals_adj'] < max_p_value
+    df['significant'] = df['padj'] < max_p_value
 
     # Identify genes outside the specified fold change range
-    df['outside_range'] = df['significant'] & (df['logfoldchanges'].abs() > min_fold_change)
+    df['outside_range'] = df['significant'] & (df['log2FoldChange'].abs() > min_fold_change)
 
     # Assign colors for plotting
     df['color'] = 'grey'
-    df.loc[df['outside_range'] & (df['logfoldchanges'] > 0), 'color'] = 'red'
-    df.loc[df['outside_range'] & (df['logfoldchanges'] <= 0), 'color'] = 'blue'
+    df.loc[df['outside_range'] & (df['log2FoldChange'] > 0), 'color'] = 'red'
+    df.loc[df['outside_range'] & (df['log2FoldChange'] <= 0), 'color'] = 'blue'
 
     # Create the plot
     plt.figure(figsize=(10, 6))
-    plt.scatter(df['logfoldchanges'], df['log10pval_corrected'], s=5, c=df['color'])
+    plt.scatter(df['log2FoldChange'], df['log10pval_corrected'], s=5, c=df['color'])
 
     # Add threshold lines
     plt.axvline(x=-min_fold_change, color='black', linestyle='--', linewidth=0.5)
@@ -165,11 +247,11 @@ def get_volcano_plot(results_df, fig_tag, min_fold_change=1, max_p_value=0.01):
 
     # Annotate top 20 significant genes
     for _, row in df[df['outside_range']].nlargest(20, 'log10pval_corrected').iterrows():
-        plt.annotate(row['names'], (row['logfoldchanges'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
+        plt.annotate(row.name, (row['log2FoldChange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
 
     # Annotate the number of DEGs
-    high_fold_change = df['logfoldchanges'].max()
-    low_fold_change = df['logfoldchanges'].min()
+    high_fold_change = df['log2FoldChange'].max()
+    low_fold_change = df['log2FoldChange'].min()
     max_log10_pval = df['log10pval_corrected'].max()
 
     plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
@@ -180,7 +262,7 @@ def get_volcano_plot(results_df, fig_tag, min_fold_change=1, max_p_value=0.01):
     plt.xlabel('Log2 Fold Change')
     plt.ylabel('-log10(p-value)')
     plt.title('Volcano plot')
-    plt.savefig(f'figures/volcano_plot_{fig_tag}.png')
+    plt.savefig(f'figures/volcano_plot_{fig_tag}.png', bbox_inches='tight')
     plt.show()
 
 def get_heatmap(adata, sampletag1, sampletag2, fig_tag, results_df, display_top_n=100, min_fold_change=0.25, max_p_value=0.05):
@@ -246,20 +328,21 @@ def display_go_enrichment(df, fig_tag, namespace='BP'):
     top_processes['GO_term'] = top_processes['GO_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
     top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
     # Plot
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(10, 8))
     norm = plt.Normalize(top_processes['-log10(FDR)'].min(), top_processes['-log10(FDR)'].max())
     colors = plt.cm.viridis(norm(top_processes['-log10(FDR)']))
     bars = plt.barh(top_processes['GO_term'], top_processes['fold_enrichment'], color=colors)
     
     plt.xlabel('Fold Enrichment')
-    plt.ylabel('Biological Process')
+    plt.ylabel(f'{namespace}')
     plt.gca().invert_yaxis()  # To display the highest -log10(FDR) at the top
     
     sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=plt.gca())
-    cbar.ax.set_title('-log10(FDR)', pad=20)
+    cbar.ax.set_title('-log10(FDR)', pad=30)
     
     plt.tight_layout()
-    plt.savefig(f'figures/go_enrichment_results_{namespace}_{fig_tag}.png')
+    plt.savefig(f'figures/go_enrichment_results_{namespace}_{fig_tag}.png', bbox_inches='tight')
     plt.show()
+
