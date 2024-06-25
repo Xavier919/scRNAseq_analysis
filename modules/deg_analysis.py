@@ -16,29 +16,69 @@ from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE
 import mygene
 import rpy2.robjects as ro
 from rpy2.robjects import pandas2ri
+import pickle
+import gseapy as gp
 
-def query_genes(adata):
+def kegg_enrichment_analysis(gene_list, save_path=None):
+    enr = gp.enrichr(gene_list=gene_list,
+                     gene_sets='KEGG_2019_Mouse',
+                     outdir=None, 
+                     cutoff=0.05)  
+
+    results = enr.results
+
+    results_sig = results[results['Adjusted P-value'] < 0.05]
+
+    df_results = pd.DataFrame({
+        'KEGG_term': results_sig['Term'],
+        'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
+        'population_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[1])),
+        'study_items': results_sig['Genes'].str.split(';'),
+        'p_uncorrected': results_sig['P-value'],
+        'p_fdr_bh': results_sig['Adjusted P-value'],
+        'fold_enrichment': results_sig['Combined Score'], 
+        'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified')
+    })
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(df_results, f)
+
+    return df_results
+
+def annotate_adata(adata, anno_df):
+    anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
+    adata.obs.index = adata.obs.index.astype(str)
+    anno_df.index = anno_df.index.astype(str)
+    adata.obs['class_name'] = anno_df['class_name']
+    adata.obs['subclass_name'] = anno_df['subclass_name']
+    adata.obs['supertype_name'] = anno_df['supertype_name']
+    adata.obs['cluster_name'] = anno_df['cluster_name']
+    return adata
+
+def get_DEGs(df, genes_ncbi, max_pval=0.05, min_fold_change=0.25):
+    filtered_above = df[(df['padj'] < max_pval) & (df['log2FoldChange'] > min_fold_change)]
+    filtered_below = df[(df['padj'] < max_pval) & (df['log2FoldChange'] < -min_fold_change)]
+    genes_above_id = [genes_ncbi[x.upper()] for x in filtered_above['names'] if x.upper() in genes_ncbi]
+    genes_below_id = [genes_ncbi[x.upper()] for x in filtered_below['names'] if x.upper() in genes_ncbi]
+    genes_above_name = [x.upper() for x in filtered_above['names'] if x.upper() in genes_ncbi]
+    genes_below_name = [x.upper() for x in filtered_below['names'] if x.upper() in genes_ncbi]
+    return genes_above_id, genes_below_id, genes_above_name, genes_below_name
+
+def query_genes(adata, save_path=None):
     reference_list = adata.var.index.str.upper().tolist()
     mg = mygene.MyGeneInfo()
     background_gene_info = mg.querymany(reference_list, scopes='symbol', fields='entrezgene', species='mouse')
-    gene_to_ncbi = {entry['query']: entry.get('entrezgene') for entry in background_gene_info if 'entrezgene' in entry}
+    gene_to_ncbi = {entry['query']: int(entry.get('entrezgene')) for entry in background_gene_info if 'entrezgene' in entry}
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(gene_to_ncbi, f)
     return gene_to_ncbi
 
-def perform_go_enrichment(gene_list, background_genes):
-    """
-    Perform GO enrichment analysis.
-
-    Parameters:
-    gene_list (list): List of gene IDs to analyze.
-    background_genes (list): List of background gene IDs.
-
-    Returns:
-    pandas.DataFrame: A DataFrame containing the significant GO enrichment results.
-    """
+def go_enrichment_analysis(gene_list, background_genes, save_path=None):
     obodag = GODag("DEG/go-basic.obo")
     objanno = Gene2GoReader("DEG/gene2go", taxids=[10090])
     ns2assoc = objanno.get_ns2assc()
-    
     goeaobj = GOEnrichmentStudyNS(
         background_genes, 
         ns2assoc, 
@@ -47,10 +87,8 @@ def perform_go_enrichment(gene_list, background_genes):
         alpha=0.05, 
         methods=['fdr_bh']
     )
-    
     goea_results_all = goeaobj.run_study(gene_list)
     goea_results_sig = [r for r in goea_results_all if r.p_fdr_bh < 0.05]
-    
     df_results = pd.DataFrame([{
         'GO_ID': r.GO,
         'GO_term': r.name,
@@ -65,100 +103,95 @@ def perform_go_enrichment(gene_list, background_genes):
         'enrichment': 'enriched' if r.enrichment else 'purified'
     } for r in goea_results_sig])
     
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(save_path, f)
     return df_results
 
-def DEG_analysis(adata, ctr, cnd, cell_type):
-    """
-    Performs differential expression analysis for specified cell types between control and condition groups.
+def go_enrichment_analysis(gene_list, save_path=None):
+    categories = {
+        'BP': 'GO_Biological_Process_2021',
+        'MF': 'GO_Molecular_Function_2021',
+        'CC': 'GO_Cellular_Component_2021'
+    }
     
-    Parameters:
-        adata (anndata.AnnData): The input AnnData object containing the observations.
-        ctr (str): The control sample tag.
-        cnd (str): The condition sample tag.
-        cell_type (list of str): The list of cell types to be included in the analysis.
+    all_results = []
+
+    for namespace, gene_set in categories.items():
+        enr = gp.enrichr(gene_list=gene_list,
+                         gene_sets=gene_set,  
+                         outdir=None, 
+                         cutoff=0.05)  
+
+        results = enr.results
+
+        # Filter results by adjusted p-value
+        results_sig = results[results['Adjusted P-value'] < 0.05]
+
+        # Create a DataFrame with the relevant information
+        df_results = pd.DataFrame({
+            'GO_term': results_sig['Term'],
+            'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
+            'population_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[1])),
+            'study_items': results_sig['Genes'].str.split(';'),
+            'p_uncorrected': results_sig['P-value'],
+            'p_fdr_bh': results_sig['Adjusted P-value'],
+            'fold_enrichment': results_sig['Combined Score'], 
+            'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified'),
+            'namespace': namespace
+        })
+        
+        all_results.append(df_results)
     
-    Returns:
-        de_results_df (pd.DataFrame): DataFrame containing the differential expression results or None if there are insufficient samples.
-    """
-    # Subset the AnnData object for the specified cell types
+    # Concatenate all results into a single DataFrame
+    final_results = pd.concat(all_results, ignore_index=True)
+
+    # Save results to a file if a save path is provided
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(final_results, f)
+
+    return final_results
+
+def DEG_analysis(adata, ctr, cnd, cell_type, save_path=None):
     subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
-    
-    # Further subset the data for the specified control and condition groups
     subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
-    
-    # Check if each group has at least two samples
     group_counts = subset_adata.obs['Sample_Tag'].value_counts()
     if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
         print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
         return None
-    
-    # Extract raw counts and create a new AnnData object
     subset_adata_raw = subset_adata.raw.to_adata().copy()
-    
-    # Normalize the data
     sc.pp.normalize_total(subset_adata_raw)
     sc.pp.log1p(subset_adata_raw)
-    # Ensure 'Sample_Tag' is treated as a categorical variable
     subset_adata_raw.obs['Sample_Tag'] = subset_adata_raw.obs['Sample_Tag'].astype('category')
-    
-    # Perform differential expression analysis
     sc.tl.rank_genes_groups(subset_adata_raw, groupby='Sample_Tag', reference=ctr, method='wilcoxon', corr_method='benjamini-hochberg')
-    
-    # Extract results for the condition group
     de_results_df = sc.get.rank_genes_groups_df(subset_adata_raw, group=cnd)
-    
+    de_results_df.rename(columns={'logfoldchanges': 'log2FoldChange', 'pvals_adj': 'padj'}, inplace=True)
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(save_path, f)
     return de_results_df
 
-def DEG_analysis_deseq2(adata, ctr, cnd, cell_type):
-    """
-    Performs differential expression analysis using DESeq2 for specified cell types between control and condition groups.
-    
-    Parameters:
-        adata (anndata.AnnData): The input AnnData object containing the observations.
-        ctr (str): The control sample tag.
-        cnd (str): The condition sample tag.
-        cell_type (list of str): The list of cell types to be included in the analysis.
-    
-    Returns:
-        de_results_df (pd.DataFrame): DataFrame containing the differential expression results or None if there are insufficient samples.
-    """
-
-    # Activate pandas to R conversion
+def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None):
     pandas2ri.activate()
-
-    # Ensure necessary R packages are installed and loaded
     ro.r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
     ro.r('BiocManager::install("DESeq2", update=FALSE)')
     ro.r('library(DESeq2)')
-
-    # Subset the AnnData object for the specified cell types
     subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
-    
-    # Further subset the data for the specified control and condition groups
     subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
-    
-    # Check if each group has at least two samples
     group_counts = subset_adata.obs['Sample_Tag'].value_counts()
     if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
         print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
         return None
 
-    # Extract raw counts
     counts = subset_adata.raw.X.toarray()
     counts = pd.DataFrame(counts, index=subset_adata.obs_names, columns=subset_adata.raw.var_names)
-    
-    # Create metadata
     metadata = subset_adata.obs[['Sample_Tag']]
     
-    # Print shapes for debugging
-    print("Counts shape:", counts.shape)
-    print("Metadata shape:", metadata.shape)
-    
-    # Convert data to R format
-    r_counts = pandas2ri.py2rpy(counts.T)  # Transpose counts for DESeq2
+    r_counts = pandas2ri.py2rpy(counts.T) 
     r_metadata = pandas2ri.py2rpy(metadata)
     
-    # Run DESeq2
     deseq2_script = """
     library(DESeq2)
     
@@ -184,72 +217,78 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type):
     run_deseq2 = ro.globalenv['run_deseq2']
     res_r = run_deseq2(r_counts, r_metadata, ctr, cnd)
     
-    # Convert results back to pandas DataFrame
     de_results_df = pandas2ri.rpy2py(res_r)
+
+    de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
     
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(save_path, f)
     return de_results_df
 
-def horizontal_deg_chart(data, fig_tag):
-    # Convert data to DataFrame
-    df = pd.DataFrame(data, columns=['Category', 'Positive', 'Negative'])
-    # Make negative values for Negative DEGs
+def horizontal_deg_chart(adata, cell_types, ctr, cnd, min_fold_change=0.25, max_p_value=0.05, fig_title=None, save_path=None):
+    cluster_n_DEGs = []
+
+    for cell_type in tqdm(cell_types):
+        df = DEG_analysis_deseq2(adata, ctr, cnd, [cell_type])
+        if df is None:
+            continue
+        positive_enriched = df[(df['log2FoldChange'] > min_fold_change) & (df['padj'] < max_p_value)]
+        negative_enriched = df[(df['log2FoldChange'] < -min_fold_change) & (df['padj'] < max_p_value)]
+        positive_count = positive_enriched.shape[0]
+        negative_count = negative_enriched.shape[0]
+        cluster_n_DEGs.append((cell_type, positive_count, negative_count))
+    
+    df = pd.DataFrame(cluster_n_DEGs, columns=['Category', 'Positive', 'Negative'])
+    
     df['Negative'] = -df['Negative']
-    # Plotting
+    
     fig, ax = plt.subplots(figsize=(10, 8))
-    # Plot the bars
+    
     ax.barh(df['Category'], df['Positive'], color='red', label='Positive DEGs')
     ax.barh(df['Category'], df['Negative'], color='blue', label='Negative DEGs')
-    # Add labels
+    if fig_title is not None:
+        ax.set_title(fig_title)
     ax.set_xlabel('Number of DEGs')
     ax.set_ylabel('Clusters')
     ax.legend()
-    # Draw vertical line at zero
+    
     ax.axvline(x=0, color='black', linewidth=0.8)
-    # Set x-axis limits to center at zero and show 250 on both sides
-    #ax.set_xlim(-250, 250)
-    # Remove negative sign from x-axis labels
+    
     x_labels = ax.get_xticks()
     ax.set_xticklabels([abs(int(x)) for x in x_labels])
-    plt.savefig(f'figures/DEG_horizontal_chart_{fig_tag}.png', bbox_inches='tight')
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
-def get_volcano_plot(results_df, fig_tag, min_fold_change=1, max_p_value=0.01):
+def volcano_plot(results_df, min_fold_change=0.25, max_p_value=0.05, fig_title=None, save_path=None):
     df = results_df.copy()
 
-    # Exclude genes with fold change outside of -10, 10
     df = df[(df['log2FoldChange'] >= -10) & (df['log2FoldChange'] <= 10)]
 
-    # Remove genes with adjusted p-value of 0
     df = df[df['padj'] != 0]
 
-    # Calculate -log10 of adjusted p-values
     df['log10pval_corrected'] = -np.log10(df['padj'])
 
-    # Identify significant genes
     df['significant'] = df['padj'] < max_p_value
 
-    # Identify genes outside the specified fold change range
     df['outside_range'] = df['significant'] & (df['log2FoldChange'].abs() > min_fold_change)
 
-    # Assign colors for plotting
     df['color'] = 'grey'
     df.loc[df['outside_range'] & (df['log2FoldChange'] > 0), 'color'] = 'red'
     df.loc[df['outside_range'] & (df['log2FoldChange'] <= 0), 'color'] = 'blue'
 
-    # Create the plot
     plt.figure(figsize=(10, 6))
     plt.scatter(df['log2FoldChange'], df['log10pval_corrected'], s=5, c=df['color'])
 
-    # Add threshold lines
     plt.axvline(x=-min_fold_change, color='black', linestyle='--', linewidth=0.5)
     plt.axvline(x=min_fold_change, color='black', linestyle='--', linewidth=0.5)
     plt.axhline(y=-np.log10(max_p_value), color='black', linestyle='--', linewidth=0.5)
 
-    # Annotate top 20 significant genes
     for _, row in df[df['outside_range']].nlargest(20, 'log10pval_corrected').iterrows():
-        plt.annotate(row.name, (row['log2FoldChange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
+        plt.annotate(row['names'], (row['log2FoldChange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
 
-    # Annotate the number of DEGs
     high_fold_change = df['log2FoldChange'].max()
     low_fold_change = df['log2FoldChange'].min()
     max_log10_pval = df['log10pval_corrected'].max()
@@ -257,45 +296,36 @@ def get_volcano_plot(results_df, fig_tag, min_fold_change=1, max_p_value=0.01):
     plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
     plt.annotate(f"{df[df['color'] == 'blue'].shape[0]} DEGs", xy=(low_fold_change, max_log10_pval), ha='left', va='top', fontsize=10, color='blue')
 
-    # Add grid, labels, and title
     plt.grid(True, which='both', linestyle='-', linewidth=0.5, color='gray', alpha=0.2)
     plt.xlabel('Log2 Fold Change')
     plt.ylabel('-log10(p-value)')
-    plt.title('Volcano plot')
-    plt.savefig(f'figures/volcano_plot_{fig_tag}.png', bbox_inches='tight')
+    if fig_title is not None:
+        plt.title(fig_title)
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
-def get_heatmap(adata, sampletag1, sampletag2, fig_tag, results_df, display_top_n=100, min_fold_change=0.25, max_p_value=0.05):
-    # Filter DEGs
+def deg_heatmap(adata, sampletag1, sampletag2, fig_tag, results_df, display_top_n=100, min_fold_change=0.25, max_p_value=0.05, save_path=None):
     deg = results_df[(results_df["pvals_adj"] < max_p_value) & (results_df["logfoldchanges"].abs() > min_fold_change)]['names'].tolist()
     
-    # Create a raw AnnData object
     adata_raw = anndata.AnnData(X=adata.raw.X, obs=adata.obs, var=adata.raw.var)
     
-    # Normalize the raw data
     sc.pp.normalize_total(adata_raw)
     
-    # Extract the data frame for mean expression
     mean_expr = adata_raw.to_df().groupby(adata_raw.obs['Sample_Tag']).mean().T
     
-    # Subset the DataFrame to include only the desired sample tags
     mean_expr = mean_expr[[sampletag1, sampletag2]]
     
-    # Calculate the difference between the two sample tags
     mean_expr['diff'] = mean_expr[sampletag2] - mean_expr[sampletag1]
     
-    # Sort the DataFrame by the difference
     mean_expr_sorted = mean_expr.sort_values(by='diff', ascending=False)
     
-    # Select top 100 positive and negative DEGs
     top_pos = mean_expr_sorted[mean_expr_sorted['diff'] > 0][:display_top_n]
     top_neg = mean_expr_sorted[mean_expr_sorted['diff'] < 0][:display_top_n]
     mean_expr_sorted = pd.concat([top_pos, top_neg])
     
-    # Drop the 'diff' column for clustering
     heatmap_data = mean_expr_sorted.drop(columns='diff')
         
-    # Generate the heatmap
     sns.set(context='notebook', font_scale=1.2)
     cg = sns.clustermap(heatmap_data, cmap='coolwarm', linewidths=.5, figsize=(10, 15), row_cluster=True, col_cluster=False)
     
@@ -312,30 +342,30 @@ def get_heatmap(adata, sampletag1, sampletag2, fig_tag, results_df, display_top_
         tick.set_ha('center')
         tick.set_rotation(0)
     
-    # Save and display the heatmap
-    plt.savefig(f'figures/deg_heatmap_{fig_tag}.png')
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
-
-def display_go_enrichment(df, fig_tag, namespace='BP'):
+def display_go_enrichment(df, namespace='BP', fig_title=None, save_path=None):
+    if df.empty:
+        print("Warning: No enriched term.")
+        return
     df = df[df['namespace'] == namespace]
     df = df[['GO_term', 'fold_enrichment', 'p_fdr_bh']]
-    # Calculate -log10(FDR)
     df['-log10(FDR)'] = -np.log10(df['p_fdr_bh'])
-    # Select top processes based on -log10(FDR)
     top_processes = df.nlargest(20, '-log10(FDR)')
-    # Simplify GO terms
     top_processes['GO_term'] = top_processes['GO_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
     top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
-    # Plot
     plt.figure(figsize=(10, 8))
     norm = plt.Normalize(top_processes['-log10(FDR)'].min(), top_processes['-log10(FDR)'].max())
     colors = plt.cm.viridis(norm(top_processes['-log10(FDR)']))
     bars = plt.barh(top_processes['GO_term'], top_processes['fold_enrichment'], color=colors)
     
+    if fig_title is not None:
+        plt.title(fig_title)
     plt.xlabel('Fold Enrichment')
     plt.ylabel(f'{namespace}')
-    plt.gca().invert_yaxis()  # To display the highest -log10(FDR) at the top
+    plt.gca().invert_yaxis()
     
     sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
     sm.set_array([])
@@ -343,6 +373,36 @@ def display_go_enrichment(df, fig_tag, namespace='BP'):
     cbar.ax.set_title('-log10(FDR)', pad=30)
     
     plt.tight_layout()
-    plt.savefig(f'figures/go_enrichment_results_{namespace}_{fig_tag}.png', bbox_inches='tight')
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
+def display_kegg_enrichment(df, fig_title=None, save_path=None):
+    if df.empty:
+        print("Warning: No enriched term.")
+        return
+    df = df[['KEGG_term', 'fold_enrichment', 'p_fdr_bh']]
+    df['-log10(FDR)'] = -np.log10(df['p_fdr_bh'])
+    top_processes = df.nlargest(20, '-log10(FDR)')
+    top_processes['KEGG_term'] = top_processes['KEGG_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
+    top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
+    plt.figure(figsize=(10, 8))
+    norm = plt.Normalize(top_processes['-log10(FDR)'].min(), top_processes['-log10(FDR)'].max())
+    colors = plt.cm.viridis(norm(top_processes['-log10(FDR)']))
+    bars = plt.barh(top_processes['KEGG_term'], top_processes['fold_enrichment'], color=colors)
+    
+    if fig_title is not None:
+        plt.title(fig_title)
+    plt.xlabel('Fold Enrichment')
+    plt.ylabel('Pathway')
+    plt.gca().invert_yaxis()
+    
+    sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=plt.gca())
+    cbar.ax.set_title('-log10(FDR)', pad=30)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()

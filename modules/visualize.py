@@ -16,8 +16,9 @@ import seaborn as sns
 from matplotlib.colors import ListedColormap
 import re
 from collections import defaultdict
+import pickle
 
-def elbow_plot(adata):
+def elbow_plot(adata, save_path=None):
     sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
@@ -26,10 +27,11 @@ def elbow_plot(adata):
     ax.set_xlabel('Principal component')
     ax.set_ylabel('Variance ratio')
     ax.set_title('PCA variance ratio')
-    plt.savefig('figures/elbow_plot.png')
+    if save_path:
+        plt.savefig(save_path)
     plt.show()
 
-def dimension_heatmap(adata, n_components=15, n_cells=500):
+def dimension_heatmap(adata, n_components=15, n_cells=500, save_path=None):
     sc.tl.pca(adata, svd_solver='arpack')
     pca_df = pd.DataFrame(adata.obsm['X_pca'][:, :n_components], index=adata.obs_names)
     sampled_pca_df = pca_df.sample(n=n_cells)
@@ -39,10 +41,12 @@ def dimension_heatmap(adata, n_components=15, n_cells=500):
     ax.set_ylabel('Principal components')
     ax.set_title(f'Dimension heatmap')
     ax.set_xticks([])
-    plt.savefig('figures/dimension_heatmap.png')
+    if save_path:
+        plt.savefig(save_path)
     plt.show()
 
-def plot_umap(adata, sample_tags, cluster_type='cluster_class_name', legend_fontsize=5):
+def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_path=None):
+    sample_tags = adata.obs['Sample_Tag'].unique()
     for tag in sample_tags:
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
         sc.pl.umap(
@@ -50,73 +54,55 @@ def plot_umap(adata, sample_tags, cluster_type='cluster_class_name', legend_font
             color=[cluster_type],
             size=20,
             title=f'{tag}',
-            save=f'umap_{tag}.png',
+            save=f'{save_path}_{tag}.png',
             legend_loc='on data',
             legend_fontsize=legend_fontsize
         )
 
-
 def remove_numbers(cell_type):
     return re.sub(r'^\d+\s+', '', cell_type)
 
-def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_type='class_name'):
-    cluster_annotations = {}
-    cell_type_counter = defaultdict(int)
-    
-    for cluster in adata.obs[cluster_key].unique():
-        most_common_cell_type = adata.obs[adata.obs[cluster_key] == cluster][cluster_type].mode()[0]
-        cleaned_cell_type = remove_numbers(most_common_cell_type)
+def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_types=['class_name', 'subclass_name']):
+    for cluster_type in cluster_types:
+        cluster_annotations = {}
+        cell_type_counter = defaultdict(int)
         
-        cell_type_counter[cleaned_cell_type] += 1
-        unique_cell_type = f"{cleaned_cell_type}_{cell_type_counter[cleaned_cell_type]}"
+        for cluster in adata.obs[cluster_key].unique():
+            most_common_cell_type = adata.obs[adata.obs[cluster_key] == cluster][cluster_type].mode()[0]
+            cleaned_cell_type = remove_numbers(most_common_cell_type)
+            
+            cell_type_counter[cleaned_cell_type] += 1
+            unique_cell_type = f"{cleaned_cell_type}_{cell_type_counter[cleaned_cell_type]}"
+            
+            cluster_annotations[cluster] = unique_cell_type
         
-        cluster_annotations[cluster] = unique_cell_type
+        adata.obs[f'cluster_{cluster_type}'] = adata.obs[cluster_key].map(cluster_annotations)
+        adata.obs[f'cluster_{cluster_type}'] = adata.obs[f'cluster_{cluster_type}'].astype(str)
     
-    adata.obs[f'cluster_{cluster_type}'] = adata.obs[cluster_key].map(cluster_annotations)
+    adata.obs[cluster_key] = adata.obs[cluster_key].astype(str)
 
-def get_master_table(adata, cluster_type='cluster_class_name'):
+def get_master_table(adata, cluster_type='cluster_class_name', save_path=None):
     merged_df = adata.obs[['Sample_Tag', cluster_type]]
     result_df = merged_df.groupby(cluster_type).size().reset_index(name='total_count')
     sample_tag_counts = merged_df.groupby([cluster_type, 'Sample_Tag']).size().unstack(fill_value=0)
-    sample_tag_counts.to_csv('figures/sample_tag_counts.csv')
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(save_path, f)
     return sample_tag_counts
 
-def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50):
-    """
-    Creates a Ditto plot for the specified sample tags from an AnnData object.
-    
-    Parameters:
-        adata (anndata.AnnData): The input AnnData object containing the observations.
-        sample_tags (list of str): The sample tags for which to create the Ditto plot.
-        min_cell (int): Minimum number of cells required to be considered a separate class. Classes with fewer cells will be grouped into 'Others'.
-    """
-    # Extract relevant columns and create DataFrame
+def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50, save_path=None):
     df = adata.obs[['Sample_Tag', class_level, cluster_type]]
-
-    # Identify valid classes and group others based on all sample tags
     class_counts = df[class_level].value_counts()
     valid_classes = class_counts[class_counts >= min_cell].index
-
-    # Create color mapping for valid classes
     colormap = plt.get_cmap('tab20')  # Use 'tab20' for more distinct colors
     color_mapping = {class_name: colormap(i / len(valid_classes)) for i, class_name in enumerate(valid_classes)}
-
-    # Filter for the specified sample tags
     df_filtered = df[df['Sample_Tag'].isin(sample_tags)]
     df_filtered[class_level] = df_filtered[class_level].apply(lambda x: x if x in valid_classes else 'Others')
-
-    # Group by annotated_cluster and class_name, then count occurrences
     counts = df_filtered.groupby([cluster_type, class_level]).size().unstack(fill_value=0).fillna(0)
-
-    # Calculate percentages
     percentages = counts.div(counts.sum(axis=1), axis=0) * 100
-
-    # Plotting the Ditto plot
     plt.figure(figsize=(14, 8))
-
-    # Plot bars and add cell count text
     for class_name in percentages.columns:
-        color = color_mapping.get(class_name, 'grey')  # Default to grey if class_name not found
+        color = color_mapping.get(class_name, 'grey')  
         bars = plt.barh(percentages.index, percentages[class_name], 
                         left=percentages[percentages.columns[:percentages.columns.get_loc(class_name)]].sum(axis=1), 
                         label=class_name, color=color)
@@ -129,12 +115,10 @@ def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50
                          f'{cell_count}', 
                          va='center', ha='left')
 
-    # Labeling and title
     plt.xlabel('Percentage')
     plt.ylabel('Cluster')
     plt.title(f'Clusters cell type composition - {", ".join(sample_tags)}')
     
-    # Create a legend with only the valid classes
     handles, labels = plt.gca().get_legend_handles_labels()
     valid_handles = [handles[i] for i, label in enumerate(labels)]
     valid_labels = [label for label in labels]
@@ -142,7 +126,6 @@ def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50
     
     plt.gca().invert_yaxis()
     plt.tight_layout()
-
-    # Save and show the plot
-    plt.savefig(f'figures/ditto_by_class_name_{"_".join(sample_tags)}.png', bbox_inches='tight')
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()

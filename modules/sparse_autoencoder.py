@@ -476,35 +476,23 @@ def plot_top_contributing_genes(autoencoder, adata, latent_dim=0, top_n=10):
     plt.savefig(f'figures/top_contributing_{latent_dim}')
     plt.show()
 
-
-def get_top_genes(autoencoder, adata, top_n=10):
-    """
-    Get the top positive and negative contributing genes for each latent dimension of the autoencoder.
-
-    Parameters:
-    autoencoder (nn.Module): The trained autoencoder model.
-    adata (anndata.AnnData): The annotated data matrix containing gene names.
-    top_n (int): The number of top contributing genes to return for both positive and negative contributions. Default is 10.
-
-    Returns:
-    dict: A dictionary where each key is a latent dimension, and the value is another dictionary with 'positive' and 'negative' keys containing lists of top contributing genes.
-    """
-    # Extract encoder weights
+def get_top_genes(autoencoder, adata):
     encoder_weights = autoencoder.encoder.weight.detach().numpy()
     gene_names = adata.var_names
 
     top_genes = {}
     for i in range(encoder_weights.shape[0]):
-        # Create a DataFrame for easier sorting
         df = pd.DataFrame(encoder_weights[i], index=gene_names, columns=['weight'])
 
-        # Get top positive and negative contributing genes
-        top_positive_genes = df[df['weight'] > 0].nlargest(top_n, 'weight').index.tolist()
-        top_negative_genes = df[df['weight'] < 0].nsmallest(top_n, 'weight').index.tolist()
+        top_UP_genes = df[df['weight'] > 0.05].index.tolist()
+        top_DOWN_genes = df[df['weight'] < -0.05].index.tolist()
+
+        UP_genes_name = [x.upper() for x in top_UP_genes if x.upper()]
+        DOWN_genes_name = [x.upper() for x in top_DOWN_genes if x.upper()]
 
         top_genes[i] = {
-            'positive': top_positive_genes,
-            'negative': top_negative_genes
+            'UP_genes_name': UP_genes_name,
+            'DOWN_genes_name': DOWN_genes_name
         }
 
     return top_genes

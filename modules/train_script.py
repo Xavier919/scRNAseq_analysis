@@ -1,7 +1,6 @@
 import argparse
 import torch
 from utils import *
-from process_data import *
 from dataloader import PairedDataset
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.optim as optim
@@ -27,49 +26,11 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
 
-    adata1 = anndata.read_h5ad("data/A_count.h5ad")
-    adata1.obs['Sample_Tag'] = 1
-    adata2 = anndata.read_h5ad("data/B_count.h5ad")
-    adata2.obs['Sample_Tag'] = 2
-    #adata3 = anndata.read_h5ad("data/C_count.h5ad")
-    #adata3.obs['Sample_Tag'] = 3
-    #adata4 = anndata.read_h5ad("data/D_count.h5ad")
-    #adata4.obs['Sample_Tag'] = 4
-    #adata = anndata.concat([adata1, adata2, adata3, adata4], axis=0)
-    adata = anndata.concat([adata1, adata2], axis=0)
+    file_path = 'data/filtered_adata.h5ad'
+    adata = anndata.read_h5ad(file_path)
 
-    #adata = rm_high_mt(adata, threshold=0.3)
-    #adata = rm_low_exp(adata, threshold=0.05)
-    sc.pp.normalize_total(adata)
-    sc.pp.log1p(adata)
-    sc.pp.scale(adata)
-
-    anno_df1 = pd.read_csv("data/A_mapping.csv", skiprows=4)
-    anno_df2 = pd.read_csv("data/B_mapping.csv", skiprows=4)
-    #anno_df3 = pd.read_csv("data/C_mapping.csv", skiprows=4)
-    #anno_df4 = pd.read_csv("data/D_mapping.csv", skiprows=4)
-
-    #anno_df = pd.concat([anno_df1, anno_df2, anno_df3, anno_df4])
-    anno_df = pd.concat([anno_df1, anno_df2])
-    anno_df = anno_df.set_index('cell_id')[['class_name']]
-    anno_df = anno_df['class_name'].map(mapping1)
-
-    sc_df = pd.DataFrame(adata.X.toarray() if hasattr(adata.X, 'toarray') else adata.X, index=adata.obs_names, columns=adata.var_names)
-
-    sc_df.index = sc_df.index.astype('int64')
-
-    df1 = pd.DataFrame(adata.obs['Sample_Tag'])
-    df1.index = df1.index.astype('int64')
-    df1 = df1[df1.index.isin(sc_df.index)]
-
-    df2 = pd.DataFrame(anno_df)
-    df2.index = df2.index.astype('int64')
-    df2 = df2[df2.index.isin(sc_df.index)]
-
-
-    X = sc_df.values
-    Y = df1.values
-    #Y = df2.values
+    Y = np.array(adata.obs['target'].tolist())
+    X = adata.X.toarray()
 
     X_train, X_test, Y_train, Y_test = get_data_splits(X, Y, args.split, n_splits=5, shuffle=True, random_state=42)
 
