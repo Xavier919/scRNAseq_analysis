@@ -17,9 +17,28 @@ from matplotlib.colors import ListedColormap
 import re
 from collections import defaultdict
 import pickle
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_top_n_distr(adata, top_n=5, save_path=None):
+    non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
+    top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(5).index
+    top_genes_data = adata[:, top_genes].X
+    top_genes_df = pd.DataFrame(top_genes_data.toarray(), columns=top_genes, index=adata.obs_names)
+    for gene in top_genes:
+        plt.figure(figsize=(8, 6))
+        sns.histplot(top_genes_df[gene], bins=50, kde=True, label=gene)
+        plt.xlabel('Number of cells')
+        plt.xlim(0, 500)
+        plt.ylabel('Number of reads')
+        plt.title(f'{gene} - Number of reads per cell')
+        plt.legend(title='Genes')
+        if save_path:
+            plt.savefig(f'{save_path}_{gene}.png')
+        plt.show()
 
 def elbow_plot(adata, save_path=None):
-    sc.tl.pca(adata, svd_solver='arpack', n_comps=50)
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=500)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
     ax.bar(range(len(pca_variance_ratio)), pca_variance_ratio, alpha=0.6)

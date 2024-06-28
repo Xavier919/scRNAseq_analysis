@@ -63,8 +63,8 @@ def get_DEGs(df, genes_ncbi, max_pval=0.05, min_fold_change=0.25):
     filtered_below = df[(df['padj'] < max_pval) & (df['log2FoldChange'] < -min_fold_change)]
     genes_above_id = [genes_ncbi[x.upper()] for x in filtered_above['names'] if x.upper() in genes_ncbi]
     genes_below_id = [genes_ncbi[x.upper()] for x in filtered_below['names'] if x.upper() in genes_ncbi]
-    genes_above_name = [x.upper() for x in filtered_above['names'] if x.upper()]
-    genes_below_name = [x.upper() for x in filtered_below['names'] if x.upper()]
+    genes_above_name = [x.upper() for x in filtered_above['names']]
+    genes_below_name = [x.upper() for x in filtered_below['names']]
     return genes_above_id, genes_below_id, genes_above_name, genes_below_name
 
 def query_genes(adata, save_path=None):
@@ -127,10 +127,8 @@ def go_enrichment_analysis(gene_list, save_path=None):
 
         results = enr.results
 
-        # Filter results by adjusted p-value
         results_sig = results[results['Adjusted P-value'] < 0.05]
 
-        # Create a DataFrame with the relevant information
         df_results = pd.DataFrame({
             'GO_term': results_sig['Term'],
             'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
@@ -145,10 +143,8 @@ def go_enrichment_analysis(gene_list, save_path=None):
         
         all_results.append(df_results)
     
-    # Concatenate all results into a single DataFrame
     final_results = pd.concat(all_results, ignore_index=True)
 
-    # Save results to a file if a save path is provided
     if save_path is not None:
         with open(save_path, 'wb') as f:
             pickle.dump(final_results, f)
@@ -175,81 +171,21 @@ def DEG_analysis(adata, ctr, cnd, cell_type, save_path=None):
             pickle.dump(save_path, f)
     return de_results_df
 
-def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None):
-    pandas2ri.activate()
-    ro.r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
-    ro.r('BiocManager::install("DESeq2", update=FALSE)')
-    ro.r('library(DESeq2)')
-    subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
-    subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
-    group_counts = subset_adata.obs['Sample_Tag'].value_counts()
-    if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
-        print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
-        return None
-
-    counts = subset_adata.raw.X.toarray()
-    counts = pd.DataFrame(counts, index=subset_adata.obs_names, columns=subset_adata.raw.var_names)
-    metadata = subset_adata.obs[['Sample_Tag']]
-    
-    r_counts = pandas2ri.py2rpy(counts.T) 
-    r_metadata = pandas2ri.py2rpy(metadata)
-    
-    deseq2_script = """
-    library(DESeq2)
-    
-    run_deseq2 <- function(counts, metadata, control, condition) {
-        dds <- DESeqDataSetFromMatrix(countData = counts,
-                                      colData = metadata,
-                                      design = ~ Sample_Tag)
-        dds <- dds[ rowSums(counts(dds)) > 1, ]
-        dds$Sample_Tag <- relevel(dds$Sample_Tag, ref = control)
-        
-        # Estimate size factors using an alternative method
-        geoMeans <- apply(counts(dds), 1, function(x) exp(mean(log(x[x > 0]), na.rm = TRUE)))
-        dds <- estimateSizeFactors(dds, geoMeans=geoMeans)
-        
-        dds <- DESeq(dds)
-        res <- results(dds, contrast=c("Sample_Tag", condition, control))
-        res_df <- as.data.frame(res)
-        return(res_df)
-    }
-    """
-    ro.r(deseq2_script)
-    
-    run_deseq2 = ro.globalenv['run_deseq2']
-    res_r = run_deseq2(r_counts, r_metadata, ctr, cnd)
-    
-    de_results_df = pandas2ri.rpy2py(res_r)
-
-    de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
-    
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(save_path, f)
-    return de_results_df
-
-def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples=5, random_state=42):
+def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples=5):
     pandas2ri.activate()
     
-    # Ensure DESeq2 is installed and loaded
     r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
     r('BiocManager::install("DESeq2", update=FALSE)')
     r('library(DESeq2)')
     
-    # Set the random seed
-    np.random.seed(random_state)
-    
-    # Subset the data for the specified cell type
     subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)]
     subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])]
     
-    # Check sample counts per condition
     group_counts = subset_adata.obs['Sample_Tag'].value_counts()
     if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
         print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
         return None
 
-    # Aggregate counts per condition with subsampling (pseudobulk with replication)
     condition_labels = subset_adata.obs['Sample_Tag'].unique()
     pseudobulk_counts = []
     pseudobulk_labels = []
@@ -258,37 +194,29 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
         cells_in_condition = subset_adata[subset_adata.obs['Sample_Tag'] == condition]
         cells_count = cells_in_condition.raw.X
         
-        # Adjust n_subsamples if necessary
         actual_subsamples = min(n_subsamples, cells_count.shape[0])
         
-        # Create pseudobulk samples
         for i in range(actual_subsamples):
-            subsample_indices = resample(np.arange(cells_count.shape[0]), n_samples=max(1, cells_count.shape[0] // actual_subsamples), replace=False, random_state=random_state)
+            subsample_indices = resample(np.arange(cells_count.shape[0]), n_samples=max(1, cells_count.shape[0] // actual_subsamples), replace=False)
             subsample_counts = cells_count[subsample_indices].sum(axis=0).flatten()
             pseudobulk_counts.append(subsample_counts)
             pseudobulk_labels.append(f"{condition}_subsample_{i+1}")
 
-    # Convert to a 2D numpy array
     pseudobulk_counts = np.vstack(pseudobulk_counts)
 
-    # Create a DataFrame for counts
     counts_df = pd.DataFrame(pseudobulk_counts.T, 
                              columns=pseudobulk_labels, 
                              index=subset_adata.raw.var_names)
     
-    # Metadata for conditions
     metadata = pd.DataFrame({'Sample_Tag': pseudobulk_labels, 'Condition': [label.split('_subsample_')[0] for label in pseudobulk_labels]})
     
-    # Ensure row and column names are correctly set
     counts_df.index.name = None
     counts_df.columns.name = None
     metadata.index = counts_df.columns
     
-    # Convert to R dataframes
     r_counts = pandas2ri.py2rpy(counts_df)
     r_metadata = pandas2ri.py2rpy(metadata)
     
-    # DESeq2 analysis script with gene-wise dispersion estimates
     deseq2_script = """
     library(DESeq2)
     
@@ -309,15 +237,12 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
     robjects.r(deseq2_script)
     
     try:
-        # Run DESeq2 analysis
         run_deseq2 = robjects.globalenv['run_deseq2']
         res_r = run_deseq2(r_counts, r_metadata)
         
-        # Convert results back to a Pandas dataframe
         de_results_df = pandas2ri.rpy2py(res_r)
         de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
         
-        # Save results if save_path is provided
         if save_path is not None:
             de_results_df.to_csv(save_path, index=False)
         
@@ -327,11 +252,11 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
         print(f"An error occurred: {e}")
         return None
 
-def horizontal_deg_chart(adata, cell_types, ctr, cnd, min_fold_change=0.25, max_p_value=0.05, fig_title=None, save_path=None):
+def horizontal_deg_chart(adata, cell_types, ctr, cnd, min_fold_change=0.25, max_p_value=0.05, n_subsamples=5, fig_title=None, save_path=None):
     cluster_n_DEGs = []
 
     for cell_type in tqdm(cell_types):
-        df = DEG_analysis_deseq2(adata, ctr, cnd, [cell_type])
+        df = DEG_analysis_deseq2(adata, ctr, cnd, [cell_type], n_subsamples=n_subsamples)
         if df is None:
             continue
         positive_enriched = df[(df['log2FoldChange'] > min_fold_change) & (df['padj'] < max_p_value)]
@@ -391,9 +316,7 @@ def volcano_plot(results_df, min_fold_change=0.25, max_p_value=0.05, fig_title=N
         plt.annotate(row['names'], (row['log2FoldChange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
 
     high_fold_change = df['log2FoldChange'].max()
-    print(high_fold_change)
     low_fold_change = df['log2FoldChange'].min()
-    print(low_fold_change)
     max_log10_pval = df['log10pval_corrected'].max()
 
     plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
