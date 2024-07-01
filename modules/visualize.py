@@ -1,28 +1,54 @@
 import pandas as pd
 import numpy as np
-import anndata
-from scipy.sparse import csr_matrix
 import matplotlib.pyplot as plt
 from umap import UMAP
 import scanpy as sc
-from matplotlib.lines import Line2D
-from sklearn.decomposition import PCA
-from scipy import sparse
-from sklearn.cluster import DBSCAN
-from collections import Counter
-from sklearn.cluster import KMeans
-import math
 import seaborn as sns
-from matplotlib.colors import ListedColormap
+import scipy.stats as stats
 import re
 from collections import defaultdict
 import pickle
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
+def plot_top_genes_qq(adata, top_n=5):
+    """
+    Plot QQ plots for the top N genes with the highest raw reads, excluding mitochondrial genes.
+    
+    Parameters:
+    adata (AnnData): The AnnData object containing gene expression data.
+    top_n (int): The number of top genes to plot. Default is 5.
+    """
+    non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
+    top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(top_n).index
+    #top_genes = adata.var['Raw_Reads'].sort_values(ascending=False).head(top_n).index
+    for gene in top_genes:
+        data = adata[:, gene].X.toarray().flatten()
+        
+        mean = np.mean(data)
+        var = np.var(data)
+        p = mean / var
+        n = mean * p / (1 - p)
+        
+        theoretical_quantiles = np.linspace(0, 1, len(data))
+        theoretical_values = stats.nbinom.ppf(theoretical_quantiles, n, p)
+        
+        sorted_data = np.sort(data)
+        
+        plt.figure(figsize=(8, 6))
+        plt.plot(theoretical_values, sorted_data, 'o', label='Data')
+        plt.plot(theoretical_values, theoretical_values, 'r--', label='Theoretical Quantiles')
+        plt.xlabel('Theoretical Quantiles')
+        plt.ylabel('Sample Quantiles')
+        plt.title(f'QQ plot for Negative Binomial distribution of {gene}')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
 def plot_top_n_distr(adata, top_n=5, save_path=None):
     non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
-    top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(5).index
+    top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(top_n).index
     top_genes_data = adata[:, top_genes].X
     top_genes_df = pd.DataFrame(top_genes_data.toarray(), columns=top_genes, index=adata.obs_names)
     for gene in top_genes:

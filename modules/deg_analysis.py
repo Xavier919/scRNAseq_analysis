@@ -8,16 +8,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import anndata
 import re
-from goatools.associations import read_ncbi_gene2go
-from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
-from goatools.obo_parser import GODag
-from goatools.anno.genetogo_reader import Gene2GoReader
-from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE_GENEID2NT
-import mygene
+#from goatools.associations import read_ncbi_gene2go
+#from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
+#from goatools.obo_parser import GODag
+#from goatools.anno.genetogo_reader import Gene2GoReader
+#from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE_GENEID2NT
+#import mygene
 import pickle
 import gseapy as gp
-from rpy2.robjects import pandas2ri, r
-import rpy2.robjects as robjects
+#from rpy2.robjects import pandas2ri, r
+#import rpy2.robjects as robjects
 from sklearn.utils import resample
 
 
@@ -58,14 +58,12 @@ def annotate_adata(adata, anno_df):
     adata.obs['cluster_name'] = anno_df['cluster_name']
     return adata
 
-def get_DEGs(df, genes_ncbi, max_pval=0.05, min_fold_change=0.25):
+def get_DEGs(df, max_pval=0.05, min_fold_change=0.25):
     filtered_above = df[(df['padj'] < max_pval) & (df['log2FoldChange'] > min_fold_change)]
     filtered_below = df[(df['padj'] < max_pval) & (df['log2FoldChange'] < -min_fold_change)]
-    genes_above_id = [genes_ncbi[x.upper()] for x in filtered_above['names'] if x.upper() in genes_ncbi]
-    genes_below_id = [genes_ncbi[x.upper()] for x in filtered_below['names'] if x.upper() in genes_ncbi]
     genes_above_name = [x.upper() for x in filtered_above['names']]
     genes_below_name = [x.upper() for x in filtered_below['names']]
-    return genes_above_id, genes_below_id, genes_above_name, genes_below_name
+    return genes_above_name, genes_below_name
 
 def query_genes(adata, save_path=None):
     reference_list = adata.var.index.str.upper().tolist()
@@ -151,19 +149,13 @@ def go_enrichment_analysis(gene_list, save_path=None):
 
     return final_results
 
-def DEG_analysis(adata, ctr, cnd, cell_type, save_path=None):
-    subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)].copy()
-    subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])].copy()
-    group_counts = subset_adata.obs['Sample_Tag'].value_counts()
-    if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
-        print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
-        return None
-    subset_adata_raw = subset_adata.raw.to_adata().copy()
-    sc.pp.normalize_total(subset_adata_raw)
-    sc.pp.log1p(subset_adata_raw)
-    subset_adata_raw.obs['Sample_Tag'] = subset_adata_raw.obs['Sample_Tag'].astype('category')
-    sc.tl.rank_genes_groups(subset_adata_raw, groupby='Sample_Tag', reference=ctr, method='wilcoxon', corr_method='benjamini-hochberg')
-    de_results_df = sc.get.rank_genes_groups_df(subset_adata_raw, group=cnd)
+def DEG_analysis(adata, save_path=None):
+    subset_adata = adata.raw.to_adata().copy()
+    sc.pp.normalize_total(subset_adata)
+    sc.pp.log1p(subset_adata)
+    subset_adata.obs['group'] = subset_adata.obs['group'].astype('category')
+    sc.tl.rank_genes_groups(subset_adata, groupby='group', reference='control', method='wilcoxon', corr_method='benjamini-hochberg')
+    de_results_df = sc.get.rank_genes_groups_df(subset_adata, group='condition')
     de_results_df.rename(columns={'logfoldchanges': 'log2FoldChange', 'pvals_adj': 'padj'}, inplace=True)
 
     if save_path is not None:
@@ -252,18 +244,22 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
         print(f"An error occurred: {e}")
         return None
 
-def horizontal_deg_chart(adata, cell_types, ctr, cnd, min_fold_change=0.25, max_p_value=0.05, n_subsamples=5, fig_title=None, save_path=None):
+def horizontal_deg_chart(adata, min_fold_change=0.25, max_p_value=0.05, n_subsamples=5, fig_title=None, save_path=None):
     cluster_n_DEGs = []
 
-    for cell_type in tqdm(cell_types):
-        df = DEG_analysis_deseq2(adata, ctr, cnd, [cell_type], n_subsamples=n_subsamples)
+    cluster_class_names = adata.obs['cluster_class_name'].unique()
+
+    for cluster_class_name in tqdm(cluster_class_names):
+        subset_adata = adata[adata.obs['cluster_class_name'] == cluster_class_name, :].copy()
+        subset_adata = subset_adata[subset_adata.obs['group'] != "undefined", :]
+        df = DEG_analysis(subset_adata)
         if df is None:
             continue
         positive_enriched = df[(df['log2FoldChange'] > min_fold_change) & (df['padj'] < max_p_value)]
         negative_enriched = df[(df['log2FoldChange'] < -min_fold_change) & (df['padj'] < max_p_value)]
         positive_count = positive_enriched.shape[0]
         negative_count = negative_enriched.shape[0]
-        cluster_n_DEGs.append((cell_type, positive_count, negative_count))
+        cluster_n_DEGs.append((cluster_class_name, positive_count, negative_count))
     
     df = pd.DataFrame(cluster_n_DEGs, columns=['Category', 'Positive', 'Negative'])
     
