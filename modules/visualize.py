@@ -8,11 +8,20 @@ import scipy.stats as stats
 import re
 from collections import defaultdict
 import pickle
-import matplotlib.pyplot as plt
-import seaborn as sns
+from collections import Counter
+import matplotlib.cm as cm
 
+def pie_chart_condition(list_):
+    string_counts = Counter(list_)
+    labels = list(string_counts.keys())
+    sizes = list(string_counts.values())
+    fig, ax = plt.subplots(figsize=(4, 4))
+    colors = cm.viridis([i / len(labels) for i in range(len(labels))])
+    ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors)
+    ax.axis('equal')  
+    plt.show()
 
-def plot_top_genes_qq(adata, top_n=5):
+def plot_top_genes_qq(adata, top_n=3, save_path=None):
     """
     Plot QQ plots for the top N genes with the highest raw reads, excluding mitochondrial genes.
     
@@ -36,27 +45,29 @@ def plot_top_genes_qq(adata, top_n=5):
         
         sorted_data = np.sort(data)
         
-        plt.figure(figsize=(8, 6))
-        plt.plot(theoretical_values, sorted_data, 'o', label='Data')
-        plt.plot(theoretical_values, theoretical_values, 'r--', label='Theoretical Quantiles')
+        plt.figure(figsize=(6, 4))
+        plt.plot(theoretical_values, sorted_data, 'o')
+        plt.plot(theoretical_values, theoretical_values, 'r--')
         plt.xlabel('Theoretical Quantiles')
-        plt.ylabel('Sample Quantiles')
+        plt.ylabel('Empirical Quantiles')
         plt.title(f'QQ plot for Negative Binomial distribution of {gene}')
         plt.legend()
         plt.grid(True)
+        if save_path:
+            plt.savefig(f'{save_path}_{gene}.png')
         plt.show()
 
-def plot_top_n_distr(adata, top_n=5, save_path=None):
+def plot_top_n_distr(adata, top_n=3, save_path=None):
     non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
     top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(top_n).index
     top_genes_data = adata[:, top_genes].X
     top_genes_df = pd.DataFrame(top_genes_data.toarray(), columns=top_genes, index=adata.obs_names)
     for gene in top_genes:
-        plt.figure(figsize=(8, 6))
-        sns.histplot(top_genes_df[gene], bins=50, kde=True, label=gene)
-        plt.xlabel('Number of cells')
+        plt.figure(figsize=(6, 4))
+        sns.histplot(top_genes_df[gene], bins=50, kde=False, label=gene)
+        plt.xlabel('Number of reads')
         plt.xlim(0, 500)
-        plt.ylabel('Number of reads')
+        plt.ylabel('Number of cells')
         plt.title(f'{gene} - Number of reads per cell')
         plt.legend(title='Genes')
         if save_path:
@@ -64,7 +75,7 @@ def plot_top_n_distr(adata, top_n=5, save_path=None):
         plt.show()
 
 def elbow_plot(adata, save_path=None):
-    sc.tl.pca(adata, svd_solver='arpack', n_comps=500)
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=50, use_highly_variable=True)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
     ax.bar(range(len(pca_variance_ratio)), pca_variance_ratio, alpha=0.6)
@@ -76,16 +87,62 @@ def elbow_plot(adata, save_path=None):
         plt.savefig(save_path)
     plt.show()
 
-def dimension_heatmap(adata, n_components=15, n_cells=500, save_path=None):
-    sc.tl.pca(adata, svd_solver='arpack')
-    pca_df = pd.DataFrame(adata.obsm['X_pca'][:, :n_components], index=adata.obs_names)
-    sampled_pca_df = pca_df.sample(n=n_cells)
-    plt.figure(figsize=(8, 11))
-    ax = sns.heatmap(sampled_pca_df.transpose(), cmap='viridis', cbar=True)
-    ax.set_xlabel('Cells')
-    ax.set_ylabel('Principal components')
-    ax.set_title(f'Dimension heatmap')
-    ax.set_xticks([])
+def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10m', n_comps=50, random_seed=42, save_path=None):
+    """
+    Samples random cells and plots heatmaps of PC values for top genes of specified PCs.
+
+    Parameters:
+        adata (AnnData): The annotated data matrix.
+        n_cells (int): Number of random cells to sample.
+        n_top_genes (int): Number of top genes to display for each specified PC.
+        pc_index (str or int): Index of the principal component(s) to analyze (0-based), or a string with 'm' to specify multiple PCs.
+        n_comps (int): Number of principal components to compute.
+        random_seed (int): Seed for random number generator for reproducibility.
+
+    Returns:
+        None
+    """
+    # Sample random cells
+    np.random.seed(random_seed)  # For reproducibility
+    random_cells = np.random.choice(adata.obs_names, n_cells, replace=False)
+    adata_sampled = adata[random_cells, :]
+
+    # Perform PCA on the sampled data
+    sc.tl.pca(adata_sampled, svd_solver='arpack', n_comps=n_comps)
+
+    # Retrieve PCA loadings
+    pca_loadings = adata_sampled.varm['PCs']
+    gene_contributions = pd.DataFrame(pca_loadings, index=adata_sampled.var_names)
+
+    # Determine the PCs to plot
+    if isinstance(pc_index, str) and pc_index.endswith('m'):
+        num_pcs = int(pc_index[:-1])
+        pcs_to_plot = range(num_pcs)
+    else:
+        pcs_to_plot = [int(pc_index)]
+
+    # Number of rows and columns for subplots
+    n_cols = min(len(pcs_to_plot), 5)
+    n_rows = (len(pcs_to_plot) + n_cols - 1) // n_cols
+
+    # Create heatmaps for each specified PC
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 2.5 * n_rows))
+    axes = axes.flatten()
+
+    for i, pc in enumerate(pcs_to_plot):
+        top_genes = gene_contributions.iloc[:, pc].abs().sort_values(ascending=False).index[:n_top_genes]
+        top_gene_values = adata_sampled[:, top_genes].X
+
+        sns.heatmap(top_gene_values.T, cmap='viridis', xticklabels=False, yticklabels=top_genes, ax=axes[i])
+        axes[i].set_xlabel('Sampled Cells')
+        axes[i].set_ylabel('Top Genes')
+        axes[i].set_title(f'Heatmap of PC{pc+1}')
+
+    # Remove any empty subplots
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
     if save_path:
         plt.savefig(save_path)
     plt.show()
@@ -95,6 +152,20 @@ def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
     for tag in sample_tags:
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
         sc.pl.umap(
+            adata_subset,
+            color=[cluster_type],
+            size=20,
+            title=f'{tag}',
+            save=f'{save_path}_{tag}.png',
+            legend_loc='on data',
+            legend_fontsize=legend_fontsize
+        )
+
+def plot_tsne(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_path=None):
+    sample_tags = adata.obs['Sample_Tag'].unique()
+    for tag in sample_tags:
+        adata_subset = adata[adata.obs['Sample_Tag'] == tag]
+        sc.pl.tsne(
             adata_subset,
             color=[cluster_type],
             size=20,
@@ -130,9 +201,10 @@ def get_master_table(adata, cluster_type='cluster_class_name', save_path=None):
     merged_df = adata.obs[['Sample_Tag', cluster_type]]
     result_df = merged_df.groupby(cluster_type).size().reset_index(name='total_count')
     sample_tag_counts = merged_df.groupby([cluster_type, 'Sample_Tag']).size().unstack(fill_value=0)
+    
     if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(save_path, f)
+        sample_tag_counts.to_excel(save_path)
+        
     return sample_tag_counts
 
 def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50, save_path=None):

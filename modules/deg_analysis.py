@@ -7,6 +7,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
 import anndata
+from anndata import AnnData
 import re
 #from goatools.associations import read_ncbi_gene2go
 #from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
@@ -16,10 +17,11 @@ import re
 #import mygene
 import pickle
 import gseapy as gp
-#from rpy2.robjects import pandas2ri, r
-#import rpy2.robjects as robjects
+from rpy2.robjects import pandas2ri, r
+import rpy2.robjects as robjects
 from sklearn.utils import resample
-
+from rpy2.robjects.conversion import localconverter
+import rpy2.robjects.packages as rpackages
 
 def kegg_enrichment_analysis(gene_list, save_path=None):
     enr = gp.enrichr(gene_list=gene_list,
@@ -31,6 +33,13 @@ def kegg_enrichment_analysis(gene_list, save_path=None):
 
     results_sig = results[results['Adjusted P-value'] < 0.05]
 
+    # Assuming a fixed population size for the KEGG dataset
+    population_size = 20000  # This should be updated with the exact number if known
+    study_size = len(gene_list)
+    study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
+    population_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[1]))
+    fold_enrichment = (study_counts / study_size) / (population_counts / population_size)
+
     df_results = pd.DataFrame({
         'KEGG_term': results_sig['Term'],
         'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
@@ -38,7 +47,7 @@ def kegg_enrichment_analysis(gene_list, save_path=None):
         'study_items': results_sig['Genes'].str.split(';'),
         'p_uncorrected': results_sig['P-value'],
         'p_fdr_bh': results_sig['Adjusted P-value'],
-        'fold_enrichment': results_sig['Combined Score'], 
+        'fold_enrichment': fold_enrichment,
         'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified')
     })
 
@@ -125,23 +134,41 @@ def go_enrichment_analysis(gene_list, save_path=None):
 
         results = enr.results
 
+        if results.empty:
+            continue
+        
         results_sig = results[results['Adjusted P-value'] < 0.05]
+
+        if results_sig.empty:
+            continue
+        
+        # Assuming a fixed population size for simplicity
+        population_size = 20000  # This should be updated with the exact number if known
+        study_size = len(gene_list)
+
+        study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
+        population_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[1]))
+
+        fold_enrichment = (study_counts / study_size) / (population_counts / population_size)
 
         df_results = pd.DataFrame({
             'GO_term': results_sig['Term'],
-            'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
-            'population_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[1])),
+            'study_count': study_counts,
+            'population_count': population_counts,
             'study_items': results_sig['Genes'].str.split(';'),
             'p_uncorrected': results_sig['P-value'],
             'p_fdr_bh': results_sig['Adjusted P-value'],
-            'fold_enrichment': results_sig['Combined Score'], 
+            'fold_enrichment': fold_enrichment,
             'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified'),
             'namespace': namespace
         })
         
         all_results.append(df_results)
     
-    final_results = pd.concat(all_results, ignore_index=True)
+    if all_results:
+        final_results = pd.concat(all_results, ignore_index=True)
+    else:
+        final_results = pd.DataFrame()
 
     if save_path is not None:
         with open(save_path, 'wb') as f:
@@ -150,65 +177,57 @@ def go_enrichment_analysis(gene_list, save_path=None):
     return final_results
 
 def DEG_analysis(adata, save_path=None):
-    subset_adata = adata.raw.to_adata().copy()
-    sc.pp.normalize_total(subset_adata)
-    sc.pp.log1p(subset_adata)
-    subset_adata.obs['group'] = subset_adata.obs['group'].astype('category')
-    sc.tl.rank_genes_groups(subset_adata, groupby='group', reference='control', method='wilcoxon', corr_method='benjamini-hochberg')
-    de_results_df = sc.get.rank_genes_groups_df(subset_adata, group='condition')
+    adata.obs['group'] = adata.obs['group'].astype('category')
+    sc.tl.rank_genes_groups(adata, groupby='group', reference='control', method='wilcoxon', corr_method='benjamini-hochberg', layer='log1p_norm')
+    de_results_df = sc.get.rank_genes_groups_df(adata, group='condition')
     de_results_df.rename(columns={'logfoldchanges': 'log2FoldChange', 'pvals_adj': 'padj'}, inplace=True)
-
     if save_path is not None:
         with open(save_path, 'wb') as f:
             pickle.dump(save_path, f)
     return de_results_df
 
-def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples=5):
+
+def DEG_analysis_deseq2_pseudobulk(adata, save_path=None):
+    
     pandas2ri.activate()
     
+    # Ensure DESeq2 is installed and loaded
     r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
     r('BiocManager::install("DESeq2", update=FALSE)')
     r('library(DESeq2)')
     
-    subset_adata = adata[adata.obs['cluster_class_name'].isin(cell_type)]
-    subset_adata = subset_adata[subset_adata.obs['Sample_Tag'].isin([cnd, ctr])]
+    cnd_tags = adata.obs[adata.obs['group'] == 'condition']['Sample_Tag'].unique()
+    ctr_tags = adata.obs[adata.obs['group'] == 'control']['Sample_Tag'].unique()
     
-    group_counts = subset_adata.obs['Sample_Tag'].value_counts()
-    if group_counts.get(ctr, 0) < 2 or group_counts.get(cnd, 0) < 2:
-        print(f"Insufficient samples for DE analysis in cell type {cell_type}: {group_counts.to_dict()}")
-        return None
-
-    condition_labels = subset_adata.obs['Sample_Tag'].unique()
-    pseudobulk_counts = []
-    pseudobulk_labels = []
+    ctr_dfs = []
+    for ctr_tag in ctr_tags:
+        ctr_df = pd.DataFrame(adata[(adata.obs['group'] == 'control')].raw.X.sum(axis=0).A1)
+        ctr_df.columns = [f'control_{ctr_tag}']
+        ctr_dfs.append(ctr_df)
+    ctr_dfs = pd.concat(ctr_dfs, axis=1)
+    ctr_dfs.index = adata.raw.var_names
     
-    for condition in condition_labels:
-        cells_in_condition = subset_adata[subset_adata.obs['Sample_Tag'] == condition]
-        cells_count = cells_in_condition.raw.X
-        
-        actual_subsamples = min(n_subsamples, cells_count.shape[0])
-        
-        for i in range(actual_subsamples):
-            subsample_indices = resample(np.arange(cells_count.shape[0]), n_samples=max(1, cells_count.shape[0] // actual_subsamples), replace=False)
-            subsample_counts = cells_count[subsample_indices].sum(axis=0).flatten()
-            pseudobulk_counts.append(subsample_counts)
-            pseudobulk_labels.append(f"{condition}_subsample_{i+1}")
-
-    pseudobulk_counts = np.vstack(pseudobulk_counts)
-
-    counts_df = pd.DataFrame(pseudobulk_counts.T, 
-                             columns=pseudobulk_labels, 
-                             index=subset_adata.raw.var_names)
+    cnd_dfs = []
+    for cnd_tag in cnd_tags:
+        cnd_df = pd.DataFrame(adata[(adata.obs['group'] == 'condition')].raw.X.sum(axis=0).A1)
+        cnd_df.columns = [f'condition_{cnd_tag}']
+        cnd_dfs.append(cnd_df)
+    cnd_dfs = pd.concat(cnd_dfs, axis=1)
+    cnd_dfs.index = adata.raw.var_names
     
-    metadata = pd.DataFrame({'Sample_Tag': pseudobulk_labels, 'Condition': [label.split('_subsample_')[0] for label in pseudobulk_labels]})
+    merged_df = pd.concat([ctr_dfs.T, cnd_dfs.T]).T
     
-    counts_df.index.name = None
-    counts_df.columns.name = None
-    metadata.index = counts_df.columns
+    metadata = pd.DataFrame(
+        [(col, col.split('_')[1], "control" if col.startswith("control") else "condition")
+         for col in merged_df.columns],
+        columns=["Sample_Name", "Sample_Tag", "Condition"]
+    ).set_index("Sample_Name")
     
-    r_counts = pandas2ri.py2rpy(counts_df)
+    # Convert to R dataframes
+    r_counts = pandas2ri.py2rpy(merged_df)  # DESeq2 expects genes as rows, samples as columns
     r_metadata = pandas2ri.py2rpy(metadata)
     
+    # DESeq2 analysis script with gene-wise dispersion estimates
     deseq2_script = """
     library(DESeq2)
     
@@ -221,7 +240,7 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
         dds <- estimateDispersionsGeneEst(dds)
         dispersions(dds) <- mcols(dds)$dispGeneEst
         dds <- nbinomWaldTest(dds)
-        res <- results(dds, contrast=c("Condition", unique(metadata$Condition)[1], unique(metadata$Condition)[2]))
+        res <- results(dds, contrast=c("Condition", "condition", "control"))
         res_df <- as.data.frame(res)
         return(res_df)
     }
@@ -229,14 +248,114 @@ def DEG_analysis_deseq2(adata, ctr, cnd, cell_type, save_path=None, n_subsamples
     robjects.r(deseq2_script)
     
     try:
+        # Run DESeq2 analysis
         run_deseq2 = robjects.globalenv['run_deseq2']
         res_r = run_deseq2(r_counts, r_metadata)
         
+        # Convert results back to a Pandas dataframe
         de_results_df = pandas2ri.rpy2py(res_r)
         de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
         
         if save_path is not None:
-            de_results_df.to_csv(save_path, index=False)
+            with open(save_path, 'wb') as f:
+                pickle.dump(de_results_df, f)
+        
+        return de_results_df
+    
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+def DEG_analysis_mast(adata: AnnData, save_path: str = None) -> pd.DataFrame:
+    if 'group' not in adata.obs:
+        raise ValueError("'group' column is missing in adata.obs.")
+    
+    # Ensure 'group' column is categorical
+    adata.obs['group'] = adata.obs['group'].astype('category')
+
+    sc.pp.normalize_total(adata, target_sum=1e6)
+    sc.pp.log1p(adata)
+    
+    # Prepare expression data
+    exprs_data = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+    
+    # Prepare cdata with relevant metadata
+    cdata = adata.obs[['group', 'Sample_Tag']].copy()
+    cdata['cell_id'] = cdata.index
+    cdata['wellKey'] = cdata['cell_id']
+    
+    # Ensure wellKey is the index and name the index properly
+    cdata.set_index('wellKey', inplace=True)
+    cdata.index.name = 'wellKey'  # Set the index name to 'wellKey'
+    
+    # Ensure the indices of exprs_data and cdata are aligned
+    exprs_data_df = pd.DataFrame(exprs_data.T, index=adata.var_names, columns=adata.obs_names)
+    exprs_data_df.index.name = 'wellKey'  # Set the index name to 'wellKey'
+    
+    # Prepare feature data (fData) - it should match the number of genes
+    fdata = pd.DataFrame(index=adata.var_names)
+    fdata['primerid'] = fdata.index
+    fdata.index.name = 'primerid'
+    
+    # Convert to R dataframes using the correct localconverter
+    with localconverter(robjects.default_converter + pandas2ri.converter):
+        r_exprs_data = robjects.conversion.py2rpy(exprs_data_df)
+        r_cdata = robjects.conversion.py2rpy(cdata)
+        r_fdata = robjects.conversion.py2rpy(fdata)
+    
+    # Assign R objects directly
+    robjects.globalenv['exprs_data'] = r_exprs_data
+    robjects.globalenv['cdata'] = r_cdata
+    robjects.globalenv['fdata'] = r_fdata
+    
+    # MAST analysis script with debug prints
+    mast_script = """
+    library(MAST)
+    
+    run_mast <- function(exprs_data, cdata, fdata) {
+        print(paste("Shape of exprs_data:", paste(dim(exprs_data), collapse=" x ")))
+        print(paste("Shape of cdata:", paste(dim(cdata), collapse=" x ")))
+        print(paste("Shape of fdata:", paste(dim(fdata), collapse=" x ")))
+        
+        exprs_data <- as.matrix(exprs_data)
+        cdata <- as.data.frame(cdata)
+        fdata <- as.data.frame(fdata)
+        
+        # Ensure group is a factor and set reference level
+        cdata$group <- factor(cdata$group, levels = c('control', 'condition'))
+        
+        sca <- FromMatrix(exprsArray=exprs_data, cData=cdata, fData=fdata, check_sanity=TRUE)
+        zlmCond <- zlm(~ group, sca)
+        summaryCond <- summary(zlmCond, doLRT='groupcondition')
+        summaryDt <- summaryCond$datatable
+        fcHurdle <- merge(summaryDt[contrast=='groupcondition' & component=='H', .(primerid, `Pr(>Chisq)`)], 
+                          summaryDt[contrast=='groupcondition' & component=='logFC', .(primerid, coef)], 
+                          by='primerid')
+        fcHurdle[, fdr := p.adjust(`Pr(>Chisq)`, 'fdr')]
+        return(fcHurdle)
+    }
+    """
+    robjects.r(mast_script)
+    
+    try:
+        # Run MAST analysis
+        run_mast = robjects.globalenv['run_mast']
+        res_r = run_mast(robjects.globalenv['exprs_data'], robjects.globalenv['cdata'], robjects.globalenv['fdata'])
+        
+        # Convert results back to a Pandas dataframe using the correct localconverter
+        with localconverter(robjects.default_converter + pandas2ri.converter):
+            de_results_df = robjects.conversion.rpy2py(res_r)
+
+        # Rename columns
+        de_results_df.rename(columns={
+            'primerid': 'names',
+            'coef': 'log2FoldChange',
+            'fdr': 'padj'
+        }, inplace=True)
+
+        if save_path is not None:
+            with open(save_path, 'wb') as f:
+                pickle.dump(de_results_df, f)
         
         return de_results_df
     
@@ -308,15 +427,16 @@ def volcano_plot(results_df, min_fold_change=0.25, max_p_value=0.05, fig_title=N
     plt.axvline(x=min_fold_change, color='black', linestyle='--', linewidth=0.5)
     plt.axhline(y=-np.log10(max_p_value), color='black', linestyle='--', linewidth=0.5)
 
-    for _, row in df[df['outside_range']].nlargest(20, 'log10pval_corrected').iterrows():
+    top_genes = df[df['outside_range']].nlargest(20, 'log10pval_corrected')
+    for _, row in top_genes.iterrows():
         plt.annotate(row['names'], (row['log2FoldChange'] + 0.2, row['log10pval_corrected']), ha='left', va='center', fontsize=5)
 
     high_fold_change = df['log2FoldChange'].max()
     low_fold_change = df['log2FoldChange'].min()
     max_log10_pval = df['log10pval_corrected'].max()
 
-    plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
-    plt.annotate(f"{df[df['color'] == 'blue'].shape[0]} DEGs", xy=(low_fold_change, max_log10_pval), ha='left', va='top', fontsize=10, color='blue')
+    plt.annotate(f"{df[df['color'] == 'red'].shape[0]} DEGs", xy=(high_fold_change+0.75, max_log10_pval), ha='right', va='top', fontsize=10, color='red')
+    plt.annotate(f"{df[df['color'] == 'blue'].shape[0]} DEGs", xy=(low_fold_change-0.75, max_log10_pval), ha='left', va='top', fontsize=10, color='blue')
 
     plt.grid(True, which='both', linestyle='-', linewidth=0.5, color='gray', alpha=0.2)
     plt.xlabel('Log2 Fold Change')
@@ -373,12 +493,15 @@ def display_go_enrichment(df, namespace='BP', fig_title=None, save_path=None):
     if df.empty:
         print("Warning: No enriched term.")
         return
+
     df = df[df['namespace'] == namespace]
     df = df[['GO_term', 'fold_enrichment', 'p_fdr_bh']]
     df['-log10(FDR)'] = -np.log10(df['p_fdr_bh'])
+    df['fold_enrichment'] = df['fold_enrichment'].clip(upper=2000)
     top_processes = df.nlargest(20, '-log10(FDR)')
     top_processes['GO_term'] = top_processes['GO_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
     top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
+    
     plt.figure(figsize=(10, 8))
     norm = plt.Normalize(top_processes['-log10(FDR)'].min(), top_processes['-log10(FDR)'].max())
     colors = plt.cm.viridis(norm(top_processes['-log10(FDR)']))
