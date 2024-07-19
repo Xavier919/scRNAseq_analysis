@@ -74,15 +74,16 @@ def plot_top_n_distr(adata, top_n=3, save_path=None):
             plt.savefig(f'{save_path}_{gene}.png')
         plt.show()
 
-def elbow_plot(adata, save_path=None):
-    sc.tl.pca(adata, svd_solver='arpack', n_comps=50, use_highly_variable=True)
+
+def scree_plot(adata, layer='log1p_norm', save_path=None):
+    sc.tl.pca(adata, svd_solver='arpack', n_comps=50, use_highly_variable=True, layer=layer)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
     ax.bar(range(len(pca_variance_ratio)), pca_variance_ratio, alpha=0.6)
     ax.plot(range(len(pca_variance_ratio)), pca_variance_ratio, 'o', color='red')
     ax.set_xlabel('Principal component')
     ax.set_ylabel('Variance ratio')
-    ax.set_title('PCA variance ratio')
+    ax.set_title('Scree plot')
     if save_path:
         plt.savefig(save_path)
     plt.show()
@@ -98,17 +99,25 @@ def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10
         pc_index (str or int): Index of the principal component(s) to analyze (0-based), or a string with 'm' to specify multiple PCs.
         n_comps (int): Number of principal components to compute.
         random_seed (int): Seed for random number generator for reproducibility.
+        save_path (str or None): Path to save the heatmap plot.
 
     Returns:
         None
     """
+    # Ensure the data has highly variable genes calculated
+    if 'highly_variable' not in adata.var:
+        raise ValueError("The AnnData object does not contain 'highly_variable' information. Please calculate highly variable genes first.")
+
+    # Subset the data to only highly variable genes
+    adata_hvg = adata[:, adata.var['highly_variable']]
+
     # Sample random cells
     np.random.seed(random_seed)  # For reproducibility
-    random_cells = np.random.choice(adata.obs_names, n_cells, replace=False)
-    adata_sampled = adata[random_cells, :]
+    random_cells = np.random.choice(adata_hvg.obs_names, n_cells, replace=False)
+    adata_sampled = adata_hvg[random_cells, :]
 
     # Perform PCA on the sampled data
-    sc.tl.pca(adata_sampled, svd_solver='arpack', n_comps=n_comps)
+    sc.tl.pca(adata_sampled, svd_solver='arpack', n_comps=n_comps, use_highly_variable=True, layer='log1p_norm')
 
     # Retrieve PCA loadings
     pca_loadings = adata_sampled.varm['PCs']
@@ -132,6 +141,9 @@ def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10
     for i, pc in enumerate(pcs_to_plot):
         top_genes = gene_contributions.iloc[:, pc].abs().sort_values(ascending=False).index[:n_top_genes]
         top_gene_values = adata_sampled[:, top_genes].X
+
+        if sparse.issparse(top_gene_values):
+            top_gene_values = top_gene_values.toarray()
 
         sns.heatmap(top_gene_values.T, cmap='viridis', xticklabels=False, yticklabels=top_genes, ax=axes[i])
         axes[i].set_xlabel('Sampled Cells')

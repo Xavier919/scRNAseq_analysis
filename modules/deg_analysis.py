@@ -18,10 +18,12 @@ import re
 import pickle
 import gseapy as gp
 from rpy2.robjects import pandas2ri, r
-import rpy2.robjects as robjects
+import rpy2.robjects as ro
 from sklearn.utils import resample
 from rpy2.robjects.conversion import localconverter
 import rpy2.robjects.packages as rpackages
+import random
+import re
 
 def kegg_enrichment_analysis(gene_list, save_path=None):
     enr = gp.enrichr(gene_list=gene_list,
@@ -33,8 +35,7 @@ def kegg_enrichment_analysis(gene_list, save_path=None):
 
     results_sig = results[results['Adjusted P-value'] < 0.05]
 
-    # Assuming a fixed population size for the KEGG dataset
-    population_size = 20000  # This should be updated with the exact number if known
+    population_size = 20000 
     study_size = len(gene_list)
     study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
     population_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[1]))
@@ -83,39 +84,6 @@ def query_genes(adata, save_path=None):
         with open(save_path, 'wb') as f:
             pickle.dump(gene_to_ncbi, f)
     return gene_to_ncbi
-
-def go_enrichment_analysis(gene_list, background_genes, save_path=None):
-    obodag = GODag("DEG/go-basic.obo")
-    objanno = Gene2GoReader("DEG/gene2go", taxids=[10090])
-    ns2assoc = objanno.get_ns2assc()
-    goeaobj = GOEnrichmentStudyNS(
-        background_genes, 
-        ns2assoc, 
-        obodag, 
-        propagate_counts=False,
-        alpha=0.05, 
-        methods=['fdr_bh']
-    )
-    goea_results_all = goeaobj.run_study(gene_list)
-    goea_results_sig = [r for r in goea_results_all if r.p_fdr_bh < 0.05]
-    df_results = pd.DataFrame([{
-        'GO_ID': r.GO,
-        'GO_term': r.name,
-        'namespace': r.NS,
-        'study_count': r.study_count,
-        'population_count': r.pop_count,
-        'study_items': list(r.study_items),
-        'population_items': list(r.pop_items),
-        'p_uncorrected': r.p_uncorrected,
-        'p_fdr_bh': r.p_fdr_bh,
-        'fold_enrichment': (r.study_count / len(gene_list)) / (r.pop_count / len(background_genes)),
-        'enrichment': 'enriched' if r.enrichment else 'purified'
-    } for r in goea_results_sig])
-    
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(save_path, f)
-    return df_results
 
 def go_enrichment_analysis(gene_list, save_path=None):
     categories = {
@@ -186,48 +154,60 @@ def DEG_analysis(adata, save_path=None):
             pickle.dump(save_path, f)
     return de_results_df
 
+def aggregate_and_filter(
+    adata,
+    cell_identity,
+    condition_key="Sample_Tag",
+    cell_identity_key="class_name",
+    obs_to_keep=[], 
+    replicates_per_patient=3,
+    seed=42
+):
+    random.seed(seed)
+    np.random.seed(seed)
+    
+    adata_cell_pop = adata[adata.obs[cell_identity_key] == cell_identity].copy()
+    
+    condition_counts = adata_cell_pop.obs[condition_key].value_counts()
+    conditions_to_drop = condition_counts[condition_counts <= 100].index.tolist()
 
-def DEG_analysis_deseq2_pseudobulk(adata, save_path=None):
+    df = pd.DataFrame(columns=[*adata_cell_pop.var_names, *obs_to_keep])
+
+    adata_cell_pop.obs[condition_key] = adata_cell_pop.obs[condition_key].astype("category")
     
-    pandas2ri.activate()
+    for condition in adata_cell_pop.obs[condition_key].cat.categories:
+        if condition in conditions_to_drop:
+            continue
+        
+        adata_condition = adata_cell_pop[adata_cell_pop.obs[condition_key] == condition]
+        indices = np.array_split(random.sample(list(adata_condition.obs_names), len(adata_condition)), replicates_per_patient)
+        
+        for i, rep_idx in enumerate(indices):
+            adata_replicate = adata_condition[rep_idx]
+            
+            agg_dict = {gene: "sum" for gene in adata_replicate.var_names}
+            agg_dict.update({obs: "first" for obs in obs_to_keep})
+            
+            df_condition = pd.DataFrame(adata_replicate.X.toarray(), index=adata_replicate.obs_names, columns=adata_replicate.var_names)
+            df_condition = df_condition.join(adata_replicate.obs[obs_to_keep])
+            df_condition = df_condition.groupby(condition_key).agg(agg_dict)
+            df_condition[condition_key] = condition
+            
+            new_index = f"{condition}_{i}"
+            df.loc[new_index] = df_condition.loc[condition]
     
-    # Ensure DESeq2 is installed and loaded
-    r('if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")')
-    r('BiocManager::install("DESeq2", update=FALSE)')
-    r('library(DESeq2)')
-    
-    cnd_tags = adata.obs[adata.obs['group'] == 'condition']['Sample_Tag'].unique()
-    ctr_tags = adata.obs[adata.obs['group'] == 'control']['Sample_Tag'].unique()
-    
-    ctr_dfs = []
-    for ctr_tag in ctr_tags:
-        ctr_df = pd.DataFrame(adata[(adata.obs['group'] == 'control')].raw.X.sum(axis=0).A1)
-        ctr_df.columns = [f'control_{ctr_tag}']
-        ctr_dfs.append(ctr_df)
-    ctr_dfs = pd.concat(ctr_dfs, axis=1)
-    ctr_dfs.index = adata.raw.var_names
-    
-    cnd_dfs = []
-    for cnd_tag in cnd_tags:
-        cnd_df = pd.DataFrame(adata[(adata.obs['group'] == 'condition')].raw.X.sum(axis=0).A1)
-        cnd_df.columns = [f'condition_{cnd_tag}']
-        cnd_dfs.append(cnd_df)
-    cnd_dfs = pd.concat(cnd_dfs, axis=1)
-    cnd_dfs.index = adata.raw.var_names
-    
-    merged_df = pd.concat([ctr_dfs.T, cnd_dfs.T]).T
-    
+    return sc.AnnData(df[adata_cell_pop.var_names], obs=df.drop(columns=adata_cell_pop.var_names))
+
+
+def deseq2_dea(control_df, condition_df, save_path):
+    merged_df = pd.concat([control_df, condition_df]).T
     metadata = pd.DataFrame(
-        [(col, col.split('_')[1], "control" if col.startswith("control") else "condition")
-         for col in merged_df.columns],
-        columns=["Sample_Name", "Sample_Tag", "Condition"]
-    ).set_index("Sample_Name")
-    
-    # Convert to R dataframes
-    r_counts = pandas2ri.py2rpy(merged_df)  # DESeq2 expects genes as rows, samples as columns
+        [(col, col.split('_')[0], "control" if col in control_df.index else "condition")
+        for col in merged_df.columns],
+        columns=["Replicates", "Sample_Tag", "Condition"]
+    ).set_index("Replicates")
+    r_counts = pandas2ri.py2rpy(merged_df)
     r_metadata = pandas2ri.py2rpy(metadata)
-    
-    # DESeq2 analysis script with gene-wise dispersion estimates
     deseq2_script = """
     library(DESeq2)
     
@@ -245,68 +225,43 @@ def DEG_analysis_deseq2_pseudobulk(adata, save_path=None):
         return(res_df)
     }
     """
-    robjects.r(deseq2_script)
+    pandas2ri.activate()
     
-    try:
-        # Run DESeq2 analysis
-        run_deseq2 = robjects.globalenv['run_deseq2']
-        res_r = run_deseq2(r_counts, r_metadata)
-        
-        # Convert results back to a Pandas dataframe
-        de_results_df = pandas2ri.rpy2py(res_r)
-        de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
-        
-        if save_path is not None:
-            with open(save_path, 'wb') as f:
-                pickle.dump(de_results_df, f)
-        
-        return de_results_df
+    ro.r(deseq2_script)
     
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+    run_deseq2 = robjects.globalenv['run_deseq2']
+    res_r = run_deseq2(r_counts, r_metadata)
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        de_results_df = ro.conversion.rpy2py(res_r)
+        
+    de_results_df = de_results_df.reset_index().rename(columns={'index': 'names'})
 
-def DEG_analysis_mast(adata: AnnData, save_path: str = None) -> pd.DataFrame:
-    if 'group' not in adata.obs:
-        raise ValueError("'group' column is missing in adata.obs.")
-    
-    # Ensure 'group' column is categorical
-    adata.obs['group'] = adata.obs['group'].astype('category')
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(de_results_df, f)
+    return de_results_df
 
-    sc.pp.normalize_total(adata, target_sum=1e6)
-    sc.pp.log1p(adata)
-    
-    # Prepare expression data
-    exprs_data = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
-    
-    # Prepare cdata with relevant metadata
-    cdata = adata.obs[['group', 'Sample_Tag']].copy()
-    cdata['cell_id'] = cdata.index
-    cdata['wellKey'] = cdata['cell_id']
-    
-    # Ensure wellKey is the index and name the index properly
+def mast_dea(adata, control_df, condition_df, save_path=None):
+    control_indexes = control_df.index
+    condition_indexes = condition_df.index
+    cdata1 = pd.DataFrame({'wellKey': control_indexes, 'group': 'control'})
+    cdata2 = pd.DataFrame({'wellKey': condition_indexes, 'group': 'condition'})
+    cdata = pd.concat([cdata1, cdata2], ignore_index=True)
     cdata.set_index('wellKey', inplace=True)
-    cdata.index.name = 'wellKey'  # Set the index name to 'wellKey'
-    
-    # Ensure the indices of exprs_data and cdata are aligned
-    exprs_data_df = pd.DataFrame(exprs_data.T, index=adata.var_names, columns=adata.obs_names)
-    exprs_data_df.index.name = 'wellKey'  # Set the index name to 'wellKey'
-    
-    # Prepare feature data (fData) - it should match the number of genes
+    exprs_data = pd.concat([control_df, condition_df]).T
     fdata = pd.DataFrame(index=adata.var_names)
     fdata['primerid'] = fdata.index
     fdata.index.name = 'primerid'
-    
     # Convert to R dataframes using the correct localconverter
-    with localconverter(robjects.default_converter + pandas2ri.converter):
-        r_exprs_data = robjects.conversion.py2rpy(exprs_data_df)
-        r_cdata = robjects.conversion.py2rpy(cdata)
-        r_fdata = robjects.conversion.py2rpy(fdata)
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        r_exprs_data = ro.conversion.py2rpy(exprs_data)
+        r_cdata = ro.conversion.py2rpy(cdata)
+        r_fdata = ro.conversion.py2rpy(fdata)
     
     # Assign R objects directly
-    robjects.globalenv['exprs_data'] = r_exprs_data
-    robjects.globalenv['cdata'] = r_cdata
-    robjects.globalenv['fdata'] = r_fdata
+    ro.globalenv['exprs_data'] = r_exprs_data
+    ro.globalenv['cdata'] = r_cdata
+    ro.globalenv['fdata'] = r_fdata
     
     # MAST analysis script with debug prints
     mast_script = """
@@ -335,33 +290,27 @@ def DEG_analysis_mast(adata: AnnData, save_path: str = None) -> pd.DataFrame:
         return(fcHurdle)
     }
     """
-    robjects.r(mast_script)
+    ro.r(mast_script)
     
-    try:
-        # Run MAST analysis
-        run_mast = robjects.globalenv['run_mast']
-        res_r = run_mast(robjects.globalenv['exprs_data'], robjects.globalenv['cdata'], robjects.globalenv['fdata'])
-        
-        # Convert results back to a Pandas dataframe using the correct localconverter
-        with localconverter(robjects.default_converter + pandas2ri.converter):
-            de_results_df = robjects.conversion.rpy2py(res_r)
-
-        # Rename columns
-        de_results_df.rename(columns={
-            'primerid': 'names',
-            'coef': 'log2FoldChange',
-            'fdr': 'padj'
-        }, inplace=True)
-
-        if save_path is not None:
-            with open(save_path, 'wb') as f:
-                pickle.dump(de_results_df, f)
-        
-        return de_results_df
+    # Run MAST analysis
+    run_mast = ro.globalenv['run_mast']
+    res_r = run_mast(ro.globalenv['exprs_data'], ro.globalenv['cdata'], ro.globalenv['fdata'])
     
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+    # Convert results back to a Pandas dataframe using the correct localconverter
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        de_results_df = ro.conversion.rpy2py(res_r)
+    
+    # Rename columns
+    de_results_df.rename(columns={
+        'primerid': 'names',
+        'coef': 'log2FoldChange',
+        'fdr': 'padj'
+    }, inplace=True)
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(de_results_df, f)
+    return de_results_df
 
 def horizontal_deg_chart(adata, min_fold_change=0.25, max_p_value=0.05, n_subsamples=5, fig_title=None, save_path=None):
     cluster_n_DEGs = []
@@ -547,6 +496,58 @@ def display_kegg_enrichment(df, fig_title=None, save_path=None):
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=plt.gca())
     cbar.ax.set_title('-log10(FDR)', pad=30)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
+
+def display_go_enrichment(df, namespace='BP', fig_title=None, save_path=None):
+    if df.empty:
+        print("Warning: No enriched term.")
+        return
+
+    df = df[df['namespace'] == namespace]
+    df = df[['GO_term', 'p_fdr_bh']]
+    df['-log10(FDR)'] = -np.log10(df['p_fdr_bh'])
+    top_processes = df.nlargest(20, '-log10(FDR)')
+    top_processes['GO_term'] = top_processes['GO_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
+    top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
+    
+    plt.figure(figsize=(8, 6))
+    bars = plt.barh(top_processes['GO_term'], top_processes['-log10(FDR)'], color='skyblue')
+    
+    if fig_title is not None:
+        plt.title(fig_title)
+    plt.xlabel('-log10(FDR)')
+    plt.ylabel(f'{namespace}')
+    plt.gca().invert_yaxis()
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
+def display_kegg_enrichment(df, fig_title=None, save_path=None):
+    if df.empty:
+        print("Warning: No enriched term.")
+        return
+
+    df = df[['KEGG_term', 'p_fdr_bh']]
+    df['-log10(FDR)'] = -np.log10(df['p_fdr_bh'])
+    top_processes = df.nlargest(20, '-log10(FDR)')
+    top_processes['KEGG_term'] = top_processes['KEGG_term'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
+    top_processes = top_processes.sort_values(by='-log10(FDR)', ascending=False)
+    
+    plt.figure(figsize=(8, 6))
+    bars = plt.barh(top_processes['KEGG_term'], top_processes['-log10(FDR)'], color='skyblue')
+    
+    if fig_title is not None:
+        plt.title(fig_title)
+    plt.xlabel('-log10(FDR)')
+    plt.ylabel('Pathway')
+    plt.gca().invert_yaxis()
     
     plt.tight_layout()
     if save_path:
