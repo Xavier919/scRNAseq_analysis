@@ -62,10 +62,10 @@ def annotate_adata(adata, anno_df):
     anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
     adata.obs.index = adata.obs.index.astype(str)
     anno_df.index = anno_df.index.astype(str)
-    adata.obs['class_name'] = anno_df['class_name']
-    adata.obs['subclass_name'] = anno_df['subclass_name']
-    adata.obs['supertype_name'] = anno_df['supertype_name']
-    adata.obs['cluster_name'] = anno_df['cluster_name']
+    adata.obs['class_name'] = anno_df['class_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['subclass_name'] = anno_df['subclass_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['supertype_name'] = anno_df['supertype_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['cluster_name'] = anno_df['cluster_name'].apply(lambda x: x.split(' ')[1])
     return adata
 
 def get_DEGs(df, max_pval=0.05, min_fold_change=0.25):
@@ -160,7 +160,7 @@ def aggregate_and_filter(
     condition_key="Sample_Tag",
     cell_identity_key="class_name",
     obs_to_keep=[], 
-    replicates_per_patient=3,
+    replicates_per_condition=3,
     seed=42
 ):
     random.seed(seed)
@@ -180,7 +180,7 @@ def aggregate_and_filter(
             continue
         
         adata_condition = adata_cell_pop[adata_cell_pop.obs[condition_key] == condition]
-        indices = np.array_split(random.sample(list(adata_condition.obs_names), len(adata_condition)), replicates_per_patient)
+        indices = np.array_split(random.sample(list(adata_condition.obs_names), len(adata_condition)), replicates_per_condition)
         
         for i, rep_idx in enumerate(indices):
             adata_replicate = adata_condition[rep_idx]
