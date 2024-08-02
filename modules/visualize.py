@@ -10,15 +10,29 @@ from collections import defaultdict
 import pickle
 from collections import Counter
 import matplotlib.cm as cm
+import scipy.sparse as sparse
 
-def pie_chart_condition(list_):
+def pie_chart_condition(list_, save_path=None):
+    """
+    Generate a pie chart based on the given list of conditions.
+
+    Args:
+        list_ (list): A list of conditions.
+        save_path (str, optional): The file path to save the chart image. Defaults to None.
+
+    Returns:
+        None
+    """
     string_counts = Counter(list_)
     labels = list(string_counts.keys())
     sizes = list(string_counts.values())
-    fig, ax = plt.subplots(figsize=(4, 4))
+    fig, ax = plt.subplots(figsize=(6, 6))
     colors = cm.viridis([i / len(labels) for i in range(len(labels))])
     ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors)
     ax.axis('equal')  
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
 def plot_top_genes_qq(adata, top_n=3, save_path=None):
@@ -31,8 +45,13 @@ def plot_top_genes_qq(adata, top_n=3, save_path=None):
     """
     non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
     top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(top_n).index
-    #top_genes = adata.var['Raw_Reads'].sort_values(ascending=False).head(top_n).index
-    for gene in top_genes:
+    
+    fig, axes = plt.subplots(1, top_n, figsize=(6 * top_n, 4))
+    
+    if top_n == 1:
+        axes = [axes]
+    
+    for i, gene in enumerate(top_genes):
         data = adata[:, gene].X.toarray().flatten()
         
         mean = np.mean(data)
@@ -45,37 +64,70 @@ def plot_top_genes_qq(adata, top_n=3, save_path=None):
         
         sorted_data = np.sort(data)
         
-        plt.figure(figsize=(6, 4))
-        plt.plot(theoretical_values, sorted_data, 'o')
-        plt.plot(theoretical_values, theoretical_values, 'r--')
-        plt.xlabel('Theoretical Quantiles')
-        plt.ylabel('Empirical Quantiles')
-        plt.title(f'QQ plot for Negative Binomial distribution of {gene}')
-        plt.legend()
-        plt.grid(True)
-        if save_path:
-            plt.savefig(f'{save_path}_{gene}.png')
-        plt.show()
+        axes[i].plot(theoretical_values, sorted_data, 'o')
+        axes[i].plot(theoretical_values, theoretical_values, 'r--')
+        axes[i].set_xlabel('Theoretical Quantiles')
+        axes[i].set_ylabel('Empirical Quantiles')
+        axes[i].set_title(f'QQ plot for Negative Binomial distribution of {gene}')
+        axes[i].legend()
+        axes[i].grid(True)
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    
+    plt.show()
+
 
 def plot_top_n_distr(adata, top_n=3, save_path=None):
+    """
+    Plot the distribution of the top n genes in a single-cell RNA-seq dataset.
+
+    Parameters:
+        adata (AnnData): Annotated data object containing the single-cell RNA-seq data.
+        top_n (int): Number of top genes to plot. Default is 3.
+        save_path (str): Path to save the plot. If not provided, the plot will be displayed.
+
+    Returns:
+        None
+    """
     non_mt_genes = adata.var[~adata.var.index.str.startswith('mt-')]
     top_genes = non_mt_genes['Raw_Reads'].sort_values(ascending=False).head(top_n).index
     top_genes_data = adata[:, top_genes].X
     top_genes_df = pd.DataFrame(top_genes_data.toarray(), columns=top_genes, index=adata.obs_names)
-    for gene in top_genes:
-        plt.figure(figsize=(6, 4))
-        sns.histplot(top_genes_df[gene], bins=50, kde=False, label=gene)
-        plt.xlabel('Number of reads')
-        plt.xlim(0, 500)
-        plt.ylabel('Number of cells')
-        plt.title(f'{gene} - Number of reads per cell')
-        plt.legend(title='Genes')
-        if save_path:
-            plt.savefig(f'{save_path}_{gene}.png')
-        plt.show()
+    
+    fig, axes = plt.subplots(1, top_n, figsize=(6 * top_n, 4))
+    
+    if top_n == 1:
+        axes = [axes]
+    
+    for i, gene in enumerate(top_genes):
+        sns.histplot(top_genes_df[gene], bins=50, kde=False, label=gene, ax=axes[i])
+        axes[i].set_xlabel('Number of reads')
+        axes[i].set_xlim(0, 500)
+        axes[i].set_ylabel('Number of cells')
+        axes[i].set_title(f'{gene} - Number of reads per cell')
+        axes[i].legend(title='Genes')
+    
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    
+    plt.show()
 
 
 def scree_plot(adata, layer='log1p_norm', save_path=None):
+    """
+    Generate a scree plot for the principal components analysis (PCA) of the given AnnData object.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the data.
+        layer (str, optional): The layer of the data to use for PCA. Defaults to 'log1p_norm'.
+        save_path (str, optional): The file path to save the plot. Defaults to None.
+
+    Returns:
+        None
+    """
     sc.tl.pca(adata, svd_solver='arpack', n_comps=50, use_highly_variable=True, layer=layer)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     fig, ax = plt.subplots()
@@ -84,11 +136,12 @@ def scree_plot(adata, layer='log1p_norm', save_path=None):
     ax.set_xlabel('Principal component')
     ax.set_ylabel('Variance ratio')
     ax.set_title('Scree plot')
+    plt.tight_layout()
     if save_path:
-        plt.savefig(save_path)
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
-def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10m', n_comps=50, random_seed=42, save_path=None):
+def plot_top_genes_pca_heatmaps(adata, layer='scran_normalization', n_cells=500, n_top_genes=10, pc_index='10m', n_comps=50, random_seed=42, save_path=None):
     """
     Samples random cells and plots heatmaps of PC values for top genes of specified PCs.
 
@@ -117,7 +170,7 @@ def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10
     adata_sampled = adata_hvg[random_cells, :]
 
     # Perform PCA on the sampled data
-    sc.tl.pca(adata_sampled, svd_solver='arpack', n_comps=n_comps, use_highly_variable=True, layer='log1p_norm')
+    sc.tl.pca(adata_sampled, svd_solver='arpack', n_comps=n_comps, use_highly_variable=True, layer=layer)
 
     # Retrieve PCA loadings
     pca_loadings = adata_sampled.varm['PCs']
@@ -156,10 +209,23 @@ def plot_top_genes_pca_heatmaps(adata, n_cells=500, n_top_genes=10, pc_index='10
 
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path)
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
 
 def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_path=None):
+    """
+    Plot UMAP visualization for each sample tag in the given AnnData object.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the data to be visualized.
+        cluster_type (str): The column name in `adata.obs` that represents the cluster type.
+                            Default is 'cluster_class_name'.
+        legend_fontsize (int): The font size of the legend. Default is 5.
+        save_path (str): The path to save the generated plots. Default is None.
+
+    Returns:
+        None
+    """
     sample_tags = adata.obs['Sample_Tag'].unique()
     for tag in sample_tags:
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
@@ -174,6 +240,18 @@ def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
         )
 
 def plot_tsne(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_path=None):
+    """
+    Plot t-SNE visualization for each sample tag in the given AnnData object.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the data to be visualized.
+        cluster_type (str): The column name in adata.obs to use for coloring the t-SNE plot. Default is 'cluster_class_name'.
+        legend_fontsize (int): The font size of the legend. Default is 5.
+        save_path (str): The path to save the generated plot. Default is None.
+
+    Returns:
+        None
+    """
     sample_tags = adata.obs['Sample_Tag'].unique()
     for tag in sample_tags:
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
@@ -191,6 +269,17 @@ def remove_numbers(cell_type):
     return re.sub(r'^\d+\s+', '', cell_type)
 
 def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_types=['class_name', 'subclass_name']):
+    """
+    Assigns unique cell type names to each cluster in the AnnData object based on the most common cell type annotation.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the single-cell data.
+        cluster_key (str): The key in `adata.obs` that represents the cluster labels.
+        cluster_types (list): The list of keys in `adata.obs` that represent the cell type annotations.
+
+    Returns:
+        None
+    """
     for cluster_type in cluster_types:
         cluster_annotations = {}
         cell_type_counter = defaultdict(int)
@@ -210,6 +299,17 @@ def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_types=['c
     adata.obs[cluster_key] = adata.obs[cluster_key].astype(str)
 
 def get_master_table(adata, cluster_type='cluster_class_name', save_path=None):
+    """
+    Generate a master table containing sample tag counts for each cluster type.
+
+    Parameters:
+        adata (AnnData): Annotated data object.
+        cluster_type (str, optional): Column name in adata.obs to use as cluster type. Defaults to 'cluster_class_name'.
+        save_path (str, optional): File path to save the resulting table as an Excel file. Defaults to None.
+
+    Returns:
+        pandas.DataFrame: A DataFrame containing sample tag counts for each cluster type.
+    """
     merged_df = adata.obs[['Sample_Tag', cluster_type]]
     result_df = merged_df.groupby(cluster_type).size().reset_index(name='total_count')
     sample_tag_counts = merged_df.groupby([cluster_type, 'Sample_Tag']).size().unstack(fill_value=0)
@@ -220,10 +320,24 @@ def get_master_table(adata, cluster_type='cluster_class_name', save_path=None):
     return sample_tag_counts
 
 def create_ditto_plot(adata, sample_tags, class_level, cluster_type, min_cell=50, save_path=None):
+    """
+    Create a Ditto plot to visualize the cell type composition of clusters.
+
+    Parameters:
+    - adata (AnnData): Annotated data object containing the single-cell data.
+    - sample_tags (list): List of sample tags to include in the plot.
+    - class_level (str): Column name in the adata.obs DataFrame representing the cell type class.
+    - cluster_type (str): Column name in the adata.obs DataFrame representing the cluster.
+    - min_cell (int, optional): Minimum number of cells required for a class to be included in the plot. Default is 50.
+    - save_path (str, optional): File path to save the plot. If not provided, the plot will be displayed.
+
+    Returns:
+    None
+    """
     df = adata.obs[['Sample_Tag', class_level, cluster_type]]
     class_counts = df[class_level].value_counts()
     valid_classes = class_counts[class_counts >= min_cell].index
-    colormap = plt.get_cmap('tab20')  # Use 'tab20' for more distinct colors
+    colormap = plt.get_cmap('tab20')  
     color_mapping = {class_name: colormap(i / len(valid_classes)) for i, class_name in enumerate(valid_classes)}
     df_filtered = df[df['Sample_Tag'].isin(sample_tags)]
     df_filtered[class_level] = df_filtered[class_level].apply(lambda x: x if x in valid_classes else 'Others')

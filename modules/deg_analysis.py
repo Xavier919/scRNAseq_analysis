@@ -144,7 +144,7 @@ def go_enrichment_analysis(gene_list, save_path=None):
 
     return final_results
 
-def DEG_analysis(adata, save_path=None):
+def wilcoxon_dea(adata, save_path=None):
     adata.obs['group'] = adata.obs['group'].astype('category')
     sc.tl.rank_genes_groups(adata, groupby='group', reference='control', method='wilcoxon', corr_method='benjamini-hochberg', layer='log1p_norm')
     de_results_df = sc.get.rank_genes_groups_df(adata, group='condition')
@@ -229,7 +229,7 @@ def deseq2_dea(control_df, condition_df, save_path):
     
     ro.r(deseq2_script)
     
-    run_deseq2 = robjects.globalenv['run_deseq2']
+    run_deseq2 = ro.globalenv['run_deseq2']
     res_r = run_deseq2(r_counts, r_metadata)
     with localconverter(ro.default_converter + pandas2ri.converter):
         de_results_df = ro.conversion.rpy2py(res_r)
