@@ -24,6 +24,10 @@ from rpy2.robjects.conversion import localconverter
 import rpy2.robjects.packages as rpackages
 import random
 import re
+from scipy.sparse import issparse
+from scipy.sparse import csr_matrix
+from scipy.sparse import coo_matrix
+
 
 def kegg_enrichment_analysis(gene_list, save_path=None):
     enr = gp.enrichr(gene_list=gene_list,

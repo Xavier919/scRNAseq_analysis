@@ -12,7 +12,17 @@ from collections import Counter
 import matplotlib.cm as cm
 import scipy.sparse as sparse
 
-def pie_chart_condition(list_, save_path=None):
+def display_transformation(adata, layer_name, save_path):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    p1 = sns.histplot(adata.obs["total_counts"], bins=100, kde=False, ax=axes[0])
+    axes[0].set_title("Total counts")
+    p2 = sns.histplot(adata.layers[layer_name].sum(1), bins=100, kde=False, ax=axes[1])
+    axes[1].legend_.remove()
+    plt.tight_layout()
+    plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
+def pie_chart_condition(list_, min_pct=0.05, save_path=None):
     """
     Generate a pie chart based on the given list of conditions.
 
@@ -24,12 +34,27 @@ def pie_chart_condition(list_, save_path=None):
         None
     """
     string_counts = Counter(list_)
-    labels = list(string_counts.keys())
-    sizes = list(string_counts.values())
-    fig, ax = plt.subplots(figsize=(6, 6))
+    total_count = sum(string_counts.values())
+    labels = []
+    sizes = []
+    other_size = 0
+    
+    for label, size in string_counts.items():
+        percentage = size / total_count
+        if percentage >= min_pct:  # min_pct threshold
+            labels.append(label)
+            sizes.append(size)
+        else:
+            other_size += size
+    
+    if other_size > 0:
+        labels.append('Others')
+        sizes.append(other_size)
+    
+    fig, ax = plt.subplots(figsize=(8, 8))
     colors = cm.viridis([i / len(labels) for i in range(len(labels))])
     ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors)
-    ax.axis('equal')  
+    ax.axis('equal')
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
@@ -227,17 +252,39 @@ def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
         None
     """
     sample_tags = adata.obs['Sample_Tag'].unique()
-    for tag in sample_tags:
+    n_tags = len(sample_tags)
+    
+    # Determine the grid size for subplots
+    n_cols = int(n_tags**0.5)
+    n_rows = (n_tags + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(4 * n_cols, 4 * n_rows))
+    axes = axes.flatten()  # Flatten the array of axes for easy iteration
+    
+    for i, tag in enumerate(sample_tags):
+        ax = axes[i]
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
         sc.pl.umap(
             adata_subset,
             color=[cluster_type],
             size=20,
             title=f'{tag}',
-            save=f'{save_path}_{tag}.png',
+            ax=ax,  # Pass the subplot axis to scanpy's plot function
+            show=False,
             legend_loc='on data',
             legend_fontsize=legend_fontsize
         )
+    
+    # Remove any unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
 
 def plot_tsne(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_path=None):
     """
@@ -253,17 +300,39 @@ def plot_tsne(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
         None
     """
     sample_tags = adata.obs['Sample_Tag'].unique()
-    for tag in sample_tags:
+    n_tags = len(sample_tags)
+    
+    # Determine the grid size for subplots
+    n_cols = int(n_tags**0.5)
+    n_rows = (n_tags + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(4 * n_cols, 4 * n_rows))
+    axes = axes.flatten()  # Flatten the array of axes for easy iteration
+    
+    for i, tag in enumerate(sample_tags):
+        ax = axes[i]
         adata_subset = adata[adata.obs['Sample_Tag'] == tag]
         sc.pl.tsne(
             adata_subset,
             color=[cluster_type],
             size=20,
             title=f'{tag}',
-            save=f'{save_path}_{tag}.png',
+            ax=ax,  # Pass the subplot axis to scanpy's plot function
+            show=False,
             legend_loc='on data',
             legend_fontsize=legend_fontsize
         )
+    
+    # Remove any unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+
 
 def remove_numbers(cell_type):
     return re.sub(r'^\d+\s+', '', cell_type)
