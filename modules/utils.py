@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import scanpy as sc
 import seaborn as sns
+from collections import Counter
+from MCML import tools as tl
 from rpy2.robjects import pandas2ri, r
 from scipy.sparse import issparse, csr_matrix
 from rpy2.robjects import numpy2ri
@@ -12,6 +14,39 @@ import anndata2ri
 import matplotlib.pyplot as plt
 import rpy2.robjects as ro
 
+def analyze_neighbor_fractions(adata, embedding_methods, n_neighbors=30, n_common_types=15):
+    """
+    Analyze neighbor fractions for different embedding methods.
+    
+    Parameters:
+    adata (AnnData): Annotated data matrix.
+    embedding_methods (list): List of embedding method names to analyze.
+    n_neighbors (int): Number of neighbors to consider (default 30).
+    n_common_types (int): Number of most common cell types to include (default 15).
+    
+    Returns:
+    pandas.DataFrame: Combined results of neighbor fraction analysis.
+    """
+    subclass_name = adata.obs['subclass_name'].values.tolist()
+    
+    results = {}
+    for method in embedding_methods:
+        neighbor_fracs, _ = tl.frac_unique_neighbors(
+            adata.obsm[f'X_{method}'], np.array(subclass_name), metric=1, neighbors=n_neighbors
+        )
+        results[method] = neighbor_fracs
+    
+    # Identify the most common cell types
+    common_cell_types = [x[0] for x in Counter(adata.obs['subclass_name']).most_common(n_common_types)]
+    
+    # Filter fractions to include only the most common cell types and calculate the mean for each type
+    for method in embedding_methods:
+        results[method] = {x: np.mean(y) for x, y in results[method].items() if x in common_cell_types}
+    
+    # Combine the results into a single DataFrame
+    combined_df = pd.DataFrame(results)
+    
+    return combined_df
 
 def annotate_adata(adata, anno_df):
     anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
