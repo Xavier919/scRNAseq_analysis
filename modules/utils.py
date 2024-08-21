@@ -1,30 +1,16 @@
 import pandas as pd
 import numpy as np
 import scanpy as sc
-from scipy.stats import ranksums
-from statsmodels.stats.multitest import multipletests
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 import seaborn as sns
-import anndata
-from anndata import AnnData
-import re
-import pickle
-import gseapy as gp
 from rpy2.robjects import pandas2ri, r
-import rpy2.robjects as ro
-from sklearn.utils import resample
-from rpy2.robjects.conversion import localconverter
-import rpy2.robjects.packages as rpackages
-import random
-import re
-from scipy.sparse import issparse
-from scipy.sparse import csr_matrix
-from scipy.sparse import coo_matrix
+from scipy.sparse import issparse, csr_matrix
 from rpy2.robjects import numpy2ri
 from rpy2.robjects import pandas2ri
 from rpy2.robjects import default_converter
 import anndata2ri
+
+import matplotlib.pyplot as plt
+import rpy2.robjects as ro
 
 
 def annotate_adata(adata, anno_df):

@@ -1,18 +1,26 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from umap import UMAP
 import scanpy as sc
 import seaborn as sns
-import scipy.stats as stats
 import re
-from collections import defaultdict
-import pickle
 from collections import Counter
+
+import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import scipy.sparse as sparse
 
 def display_transformation(adata, layer_name, save_path):
+    """
+    Display the transformation of data using histograms.
+
+    Parameters:
+        adata (AnnData): Annotated data object.
+        layer_name (str): Name of the layer to visualize.
+        save_path (str): Path to save the figure.
+
+    Returns:
+        None
+    """
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
     p1 = sns.histplot(adata.obs["total_counts"], bins=100, kde=False, ax=axes[0])
     axes[0].set_title("Total counts")
@@ -282,7 +290,7 @@ def plot_umap(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
     plt.tight_layout()
     
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(f'figures/{save_path}', bbox_inches='tight')
     plt.show()
 
 
@@ -328,13 +336,21 @@ def plot_tsne(adata, cluster_type='cluster_class_name', legend_fontsize=5, save_
         fig.delaxes(axes[j])
     
     plt.tight_layout()
-    
+        
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(f'figures/{save_path}', bbox_inches='tight')
     plt.show()
 
-
 def remove_numbers(cell_type):
+    """
+    Removes leading numbers and whitespace from a given cell type.
+
+    Args:
+        cell_type (str): The cell type string to process.
+
+    Returns:
+        str: The cell type string with leading numbers and whitespace removed.
+    """
     return re.sub(r'^\d+\s+', '', cell_type)
 
 def assign_unique_cell_type_names(adata, cluster_key='leiden', cluster_types=['class_name', 'subclass_name']):
