@@ -9,12 +9,6 @@ import seaborn as sns
 import anndata
 from anndata import AnnData
 import re
-#from goatools.associations import read_ncbi_gene2go
-#from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
-#from goatools.obo_parser import GODag
-#from goatools.anno.genetogo_reader import Gene2GoReader
-#from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE_GENEID2NT
-#import mygene
 import pickle
 import gseapy as gp
 from rpy2.robjects import pandas2ri, r
@@ -30,7 +24,18 @@ from scipy.sparse import coo_matrix
 from rpy2.robjects import numpy2ri
 from rpy2.robjects import pandas2ri
 from rpy2.robjects import default_converter
-from rpy2.robjects import anndata2ri
+import anndata2ri
+
+
+def annotate_adata(adata, anno_df):
+    anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
+    adata.obs.index = adata.obs.index.astype(str)
+    anno_df.index = anno_df.index.astype(str)
+    adata.obs['class_name'] = anno_df['class_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['subclass_name'] = anno_df['subclass_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['supertype_name'] = anno_df['supertype_name'].apply(lambda x: x.split(' ')[1])
+    adata.obs['cluster_name'] = anno_df['cluster_name'].apply(lambda x: x.split(' ')[1])
+    return adata
 
 def show_pc_variance(adata, layer_name, pc_list=[10,20,50,100]):
     sc.tl.pca(adata, svd_solver='arpack', n_comps=100, use_highly_variable=True, layer=layer_name)
@@ -106,3 +111,93 @@ def select_features(adata):
     adata.var["highly_deviant"] = mask
     adata.var["binomial_deviance"] = binomial_deviance
     return adata
+
+
+def assign_pseudoreplicates(adata):
+    # Convert 'Sample_Tag' to string if it's not already
+    adata.obs['Sample_Tag'] = adata.obs['Sample_Tag'].astype(str)
+
+    # Create a new 'batch' column based on 'Sample_Tag'
+    adata.obs['batch'] = adata.obs['Sample_Tag'].astype(str)
+
+    # Get the unique sample tags
+    unique_sample_tags = adata.obs['Sample_Tag'].unique()
+
+    # Create new batch labels
+    new_batch_labels = []
+    for sample_tag in unique_sample_tags:
+        new_batch_labels.extend([f"{sample_tag}_1", f"{sample_tag}_2", f"{sample_tag}_3"])
+
+    # Update the categories to include the new batch labels
+    adata.obs['batch'] = adata.obs['batch'].astype('category')
+    adata.obs['batch'] = adata.obs['batch'].cat.add_categories(new_batch_labels)
+
+    # Loop over each unique sample tag and assign pseudoreplicates
+    for sample_tag in unique_sample_tags:
+        # Get the indices for the current sample tag
+        indices = adata.obs[adata.obs['Sample_Tag'] == sample_tag].index
+
+        # Assign pseudoreplicates randomly
+        n = len(indices)
+        replicate_labels = np.random.choice([f"{sample_tag}_1", f"{sample_tag}_2", f"{sample_tag}_3"], size=n)
+
+        # Update the batch column with these pseudoreplicate labels
+        adata.obs.loc[indices, 'batch'] = replicate_labels
+
+    return adata
+
+
+def plot_cell_type_abundances(adata, save_path=None):
+    # Extract relevant data
+    df = adata.obs[['total_counts', 'Sample_Tag', 'subclass_name']]
+
+    # Aggregate the data to get the number of cells per cell type
+    cell_type_counts = df['subclass_name'].value_counts()
+
+    # Filter out cell types with less than 100 cells
+    filtered_cell_types = cell_type_counts[cell_type_counts >= 100].index
+
+    # Filter the original DataFrame
+    filtered_df = df[df['subclass_name'].isin(filtered_cell_types)]
+
+    # Pivot the DataFrame to get the number of cells instead of total counts
+    pivot_df = filtered_df.groupby(['Sample_Tag', 'subclass_name']).size().unstack(fill_value=0)
+
+    # Resetting the index
+    pivot_df.reset_index(inplace=True)
+
+    # Melting the DataFrame to long format
+    plot_data_global = pivot_df.melt(id_vars="Sample_Tag", var_name="Cell type", value_name="count")
+
+    # Renaming 'Sample_Tag' to 'Condition' to match the plot example
+    plot_data_global.rename(columns={'Sample_Tag': 'Condition'}, inplace=True)
+
+    # Plotting
+    fig, ax = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Filtered DataFrame for plotting to ensure legends and data match
+    filtered_plot_data_global = plot_data_global[
+        plot_data_global['Cell type'].isin(filtered_cell_types)
+    ]
+
+    # Plot for Global abundances, by condition
+    sns.barplot(
+        data=filtered_plot_data_global, x="Condition", y="count", hue="Cell type", ax=ax[0]
+    )
+    ax[0].set_title("Abundances, by condition")
+    ax[0].legend(title="Cell type", loc='center left', bbox_to_anchor=(1, 0.5))
+
+    # Plot for Global abundances, by cell type
+    sns.barplot(
+        data=filtered_plot_data_global, x="Cell type", y="count", hue="Condition", ax=ax[1]
+    )
+    ax[1].set_title("Abundances, by cell type")
+    ax[1].legend(title="Condition", loc='center left', bbox_to_anchor=(1, 0.5))
+
+    # Rotate the x-axis labels of the right plot
+    ax[1].set_xticklabels(ax[1].get_xticklabels(), rotation=45, ha='right')
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()

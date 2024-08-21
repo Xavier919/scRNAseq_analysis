@@ -9,12 +9,6 @@ import seaborn as sns
 import anndata
 from anndata import AnnData
 import re
-#from goatools.associations import read_ncbi_gene2go
-#from goatools.goea.go_enrichment_ns import GOEnrichmentStudyNS
-#from goatools.obo_parser import GODag
-#from goatools.anno.genetogo_reader import Gene2GoReader
-#from goatools.test_data.genes_NCBI_10090_ProteinCoding import GENEID2NT as MOUSE_GENEID2NT
-#import mygene
 import pickle
 import gseapy as gp
 from rpy2.robjects import pandas2ri, r
@@ -27,50 +21,6 @@ import re
 from scipy.sparse import issparse
 from scipy.sparse import csr_matrix
 from scipy.sparse import coo_matrix
-
-
-def kegg_enrichment_analysis(gene_list, save_path=None):
-    enr = gp.enrichr(gene_list=gene_list,
-                     gene_sets='KEGG_2019_Mouse',
-                     outdir=None, 
-                     cutoff=0.05)  
-
-    results = enr.results
-
-    results_sig = results[results['Adjusted P-value'] < 0.05]
-
-    population_size = 20000 
-    study_size = len(gene_list)
-    study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
-    population_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[1]))
-    fold_enrichment = (study_counts / study_size) / (population_counts / population_size)
-
-    df_results = pd.DataFrame({
-        'KEGG_term': results_sig['Term'],
-        'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
-        'population_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[1])),
-        'study_items': results_sig['Genes'].str.split(';'),
-        'p_uncorrected': results_sig['P-value'],
-        'p_fdr_bh': results_sig['Adjusted P-value'],
-        'fold_enrichment': fold_enrichment,
-        'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified')
-    })
-
-    if save_path is not None:
-        with open(save_path, 'wb') as f:
-            pickle.dump(df_results, f)
-
-    return df_results
-
-def annotate_adata(adata, anno_df):
-    anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
-    adata.obs.index = adata.obs.index.astype(str)
-    anno_df.index = anno_df.index.astype(str)
-    adata.obs['class_name'] = anno_df['class_name'].apply(lambda x: x.split(' ')[1])
-    adata.obs['subclass_name'] = anno_df['subclass_name'].apply(lambda x: x.split(' ')[1])
-    adata.obs['supertype_name'] = anno_df['supertype_name'].apply(lambda x: x.split(' ')[1])
-    adata.obs['cluster_name'] = anno_df['cluster_name'].apply(lambda x: x.split(' ')[1])
-    return adata
 
 def get_DEGs(df, max_pval=0.05, min_fold_change=0.25):
     filtered_above = df[(df['padj'] < max_pval) & (df['log2FoldChange'] > min_fold_change)]
@@ -115,7 +65,7 @@ def go_enrichment_analysis(gene_list, save_path=None):
             continue
         
         # Assuming a fixed population size for simplicity
-        population_size = 20000  # This should be updated with the exact number if known
+        population_size = 21836  
         study_size = len(gene_list)
 
         study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
@@ -147,6 +97,39 @@ def go_enrichment_analysis(gene_list, save_path=None):
             pickle.dump(final_results, f)
 
     return final_results
+
+def kegg_enrichment_analysis(gene_list, save_path=None):
+    enr = gp.enrichr(gene_list=gene_list,
+                     gene_sets='KEGG_2019_Mouse',
+                     outdir=None, 
+                     cutoff=0.05)  
+
+    results = enr.results
+
+    results_sig = results[results['Adjusted P-value'] < 0.05]
+
+    population_size = 21836 
+    study_size = len(gene_list)
+    study_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[0]))
+    population_counts = results_sig['Overlap'].apply(lambda x: int(x.split('/')[1]))
+    fold_enrichment = (study_counts / study_size) / (population_counts / population_size)
+
+    df_results = pd.DataFrame({
+        'KEGG_term': results_sig['Term'],
+        'study_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[0])),
+        'population_count': results_sig['Overlap'].apply(lambda x: int(x.split('/')[1])),
+        'study_items': results_sig['Genes'].str.split(';'),
+        'p_uncorrected': results_sig['P-value'],
+        'p_fdr_bh': results_sig['Adjusted P-value'],
+        'fold_enrichment': fold_enrichment,
+        'enrichment': results_sig['Combined Score'].apply(lambda x: 'enriched' if x > 1 else 'purified')
+    })
+
+    if save_path is not None:
+        with open(save_path, 'wb') as f:
+            pickle.dump(df_results, f)
+
+    return df_results
 
 def wilcoxon_dea(adata, save_path=None):
     adata.obs['group'] = adata.obs['group'].astype('category')
@@ -283,7 +266,7 @@ def mast_dea(adata, control_df, condition_df, save_path=None):
         # Ensure group is a factor and set reference level
         cdata$group <- factor(cdata$group, levels = c('control', 'condition'))
         
-        sca <- FromMatrix(exprsArray=exprs_data, cData=cdata, fData=fdata, check_sanity=TRUE)
+        sca <- FromMatrix(exprsArray=exprs_data, cData=cdata, fData=fdata, check_sanity=FALSE)
         zlmCond <- zlm(~ group, sca)
         summaryCond <- summary(zlmCond, doLRT='groupcondition')
         summaryDt <- summaryCond$datatable
