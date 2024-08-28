@@ -49,6 +49,16 @@ def analyze_neighbor_fractions(adata, embedding_methods, n_neighbors=30, n_commo
     return combined_df
 
 def annotate_adata(adata, anno_df):
+    """
+    Annotates the given AnnData object with the provided annotation dataframe.
+
+    Args:
+        adata (AnnData): The AnnData object to be annotated.
+        anno_df (pd.DataFrame): The annotation dataframe containing the annotations for each cell.
+
+    Returns:
+        AnnData: The annotated AnnData object.
+    """
     anno_df = anno_df.set_index('cell_id')[['class_name', "subclass_name", "supertype_name", 'cluster_name']]
     adata.obs.index = adata.obs.index.astype(str)
     anno_df.index = anno_df.index.astype(str)
@@ -59,12 +69,33 @@ def annotate_adata(adata, anno_df):
     return adata
 
 def show_pc_variance(adata, layer_name, pc_list=[10,20,50,100]):
+    """
+    Calculate and print the explained variance for the specified number of principal components (PCs).
+
+    Parameters:
+        adata (AnnData): Annotated data object.
+        layer_name (str): Name of the layer to perform PCA on.
+        pc_list (list, optional): List of integers specifying the number of PCs to calculate the explained variance for. 
+            Defaults to [10, 20, 50, 100].
+
+    Returns:
+        None
+    """
     sc.tl.pca(adata, svd_solver='arpack', n_comps=100, use_highly_variable=True, layer=layer_name)
     pca_variance_ratio = adata.uns['pca']['variance_ratio']
     for pc in pc_list:
-        print(f'{layer_name} explained variance  for the first {pc} PCs:{np.sum(pca_variance_ratio[:pc])}')
+        print(f'{layer_name} explained variance for the first {pc} PCs: {np.sum(pca_variance_ratio[:pc])}')
 
 def pearson_normalization(adata):
+    """
+    Perform Pearson normalization on the input AnnData object.
+
+    Parameters:
+        adata (AnnData): The input AnnData object.
+
+    Returns:
+        AnnData: The normalized AnnData object.
+    """
     analytic_pearson = sc.experimental.pp.normalize_pearson_residuals(adata, inplace=False)
     adata.layers["analytic_pearson_residuals"] = csr_matrix(analytic_pearson["X"])
     
@@ -77,6 +108,21 @@ def pearson_normalization(adata):
     return adata
 
 def scran_normalization(adata):
+    """
+    Perform scran normalization on the input AnnData object.
+
+    Parameters:
+        adata (AnnData): The input AnnData object containing the gene expression data.
+
+    Returns:
+        AnnData: The normalized AnnData object.
+
+    Raises:
+        None
+
+    Example:
+        adata_normalized = scran_normalization(adata)
+    """
     adata_pp = adata.copy()
     sc.pp.normalize_total(adata_pp)
     sc.pp.log1p(adata_pp)
@@ -118,6 +164,21 @@ def scran_normalization(adata):
     return adata
 
 def select_features(adata):
+    """
+    Selects features using deviance-based feature selection.
+
+    Args:
+        adata (AnnData): Annotated data object containing gene expression data.
+
+    Returns:
+        AnnData: Annotated data object with selected features.
+
+    Raises:
+        None
+
+    Examples:
+        >>> adata = select_features(adata)
+    """
     adata.X = adata.X.astype(np.float64)
     for layer in adata.layers:
         adata.layers[layer] = adata.layers[layer].astype('float64')
@@ -135,6 +196,15 @@ def select_features(adata):
 
 
 def assign_pseudoreplicates(adata):
+    """
+    Assign pseudoreplicates to the given AnnData object based on the 'Sample_Tag' column.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the data.
+
+    Returns:
+        AnnData: The updated AnnData object with pseudoreplicates assigned.
+    """
     # Convert 'Sample_Tag' to string if it's not already
     adata.obs['Sample_Tag'] = adata.obs['Sample_Tag'].astype(str)
 
@@ -169,6 +239,16 @@ def assign_pseudoreplicates(adata):
 
 
 def plot_cell_type_abundances(adata, save_path=None):
+    """
+    Plot the abundances of different cell types based on the provided AnnData object.
+
+    Parameters:
+        adata (AnnData): The AnnData object containing the single-cell RNA-seq data.
+        save_path (str, optional): The file path to save the plot. If not provided, the plot will be displayed.
+
+    Returns:
+        None
+    """
     # Extract relevant data
     df = adata.obs[['total_counts', 'Sample_Tag', 'subclass_name']]
 

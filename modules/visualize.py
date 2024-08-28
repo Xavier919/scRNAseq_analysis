@@ -8,6 +8,7 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import scipy.sparse as sparse
+from scipy import stats
 
 def display_transformation(adata, layer_name, save_path):
     """
